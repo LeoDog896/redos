@@ -1,0 +1,19 @@
+character = {
+	#linefeed = "\\n" |
+    #carriage_return = "\\r" |
+    #vertical_tab = "\\v" |
+    #form_feed = "\\f" |
+    #horizontal_tab = "\\t" |
+    #any_character = "." |
+    #digit = "\\d" |
+    #non_digit = "\\D" |
+    #word = "\\w" |
+    #non_word = "\\W" |
+    #whitespace = "\\s" |
+    #non_whitespace = "\\S" |
+    #backslash = "\\ "
+}
+
+rule = { character }
+
+regex = { SOI ~ rule* ~ EOI }

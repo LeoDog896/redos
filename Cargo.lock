@@ -138,12 +138,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "redos"
+name = "regex-full-syntax"
 version = "0.1.0"
 dependencies = [
  "pest",
  "pest_derive",
 ]
+
+[[package]]
+name = "regex-nfa"
+version = "0.1.0"
 
 [[package]]
 name = "sha2"
