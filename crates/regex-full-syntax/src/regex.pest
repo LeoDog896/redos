@@ -11,7 +11,7 @@ character = {
     #non_word = "\\W" |
     #whitespace = "\\s" |
     #non_whitespace = "\\S" |
-    #backslash = "\\ "
+    #backslash = "\\"
 }
 
 rule = { character }
