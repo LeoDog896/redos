@@ -138,6 +138,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "regex-debugger"
+version = "0.1.0"
+dependencies = [
+ "regex-full-syntax",
+]
+
+[[package]]
 name = "regex-full-syntax"
 version = "0.1.0"
 dependencies = [
