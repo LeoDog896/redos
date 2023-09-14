@@ -1,19 +1,60 @@
-character = {
+// modifiers
+
+// quantifier can either be:
+// {n}, {n,} {n,a}, {,n}
+quantifier = {
+	"{" ~
+    ((ASCII_DIGIT ~
+    	("," ~ ASCII_DIGIT?)?
+    ) | ("," ~ ASCII_DIGIT))
+    ~ "}"
+}
+
+modifier = {
+	#plus = "+" |
+    #star = "*" |
+    quantifier |
+    #optional = "?"
+}
+
+// characters
+
+char = _{
 	#linefeed = "\\n" |
     #carriage_return = "\\r" |
     #vertical_tab = "\\v" |
     #form_feed = "\\f" |
     #horizontal_tab = "\\t" |
-    #any_character = "." |
     #digit = "\\d" |
     #non_digit = "\\D" |
     #word = "\\w" |
     #non_word = "\\W" |
     #whitespace = "\\s" |
     #non_whitespace = "\\S" |
-    #backslash = "\\"
+    #backslash = "\\" |
+    #symbol = (ASCII_ALPHANUMERIC | " ")
 }
 
-rule = { character }
+all_chars = {
+	#beginning = "^" |
+    #end = "$" |
+    #any_character = "." |
+    char
+}
 
-regex = { SOI ~ rule* ~ EOI }
+character_group = { "[" ~ all_chars* ~ "]" }
+
+character = { all_chars ~ modifier? }
+characters = { character+ }
+
+// main grammar
+// regex has two parts of its main grammar:
+// (expression)
+// and expression|expression
+// we make alternations a fundamental part of this grammar
+
+group = { "(" ~ alternation ~ ")" }
+expression = { (character_group | characters | group)+ }
+alternation = _{ expression ~ ("|" ~ expression)* }
+
+regex = { SOI ~ alternation* ~ EOI }
