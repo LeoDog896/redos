@@ -35,16 +35,22 @@ char = _{
     #symbol = (ASCII_ALPHANUMERIC | " ")
 }
 
-all_chars = {
+all_char = {
 	#beginning = "^" |
     #end = "$" |
     #any_character = "." |
     char
 }
 
-character_group = { "[" ~ all_chars* ~ "]" }
+range = { #from = all_char ~ "-" ~ #to = all_char }
+character_group = { 
+	"[" 
+    ~ #negated = "^"? 
+    ~ (range | all_char)* 
+    ~ "]"
+}
 
-character = { all_chars ~ modifier? }
+character = { all_char ~ modifier? }
 characters = { character+ }
 
 // main grammar
