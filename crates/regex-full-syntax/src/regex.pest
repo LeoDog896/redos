@@ -59,7 +59,13 @@ characters = { character+ }
 // and expression|expression
 // we make alternations a fundamental part of this grammar
 
-group = { "(" ~ alternation ~ ")" }
+group_modifier = {
+	#lookahead = "?=" |
+    #negative_lokoahead = "?!" |
+    #lookbehind = "?<=" |
+    #negative_lookbehind = "?<!"
+}
+group = { "(" ~ group_modifier? ~ alternation ~ ")" }
 expression = { (character_group | characters | group)+ }
 alternation = _{ expression ~ ("|" ~ expression)* }
 
