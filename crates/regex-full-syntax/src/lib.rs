@@ -73,15 +73,7 @@ impl Display for Regex {
 
             first = false;
 
-            let mut first = true;
-
             for expression in sequence {
-                if !first {
-                    write!(f, " ")?;
-                }
-
-                first = false;
-
                 match expression {
                     Expression::String(chars) => {
                         for c in chars {
@@ -110,22 +102,32 @@ impl Display for Regex {
 
 pub fn parse(input: &str) -> Result<Regex, Error<Rule>> {
     let regex_tokens = RegexParser::parse(Rule::regex, input)?.next().unwrap();
-    let mut regex = Regex(Vec::new());
 
     for expression in regex_tokens.into_inner() {
         match expression.as_rule() {
-            Rule::expression => {
-                let mut sequence = Vec::<Expression>::new();
-                for sub_expression in expression.into_inner() {
-                    sequence.push(parse_expression(sub_expression));
-                }
-                regex.0.push(sequence);
+            Rule::alternation => {
+                return Ok(parse_alternation(expression));
             },
             Rule::EOI => (),
             _ => unreachable!()
         }
     }
-    Ok(regex)
+
+    unreachable!("The regex parser should always return an alternation")
+}
+
+fn parse_alternation(alternation: Pair<Rule>) -> Regex {
+    let mut regex = Regex(Vec::new());
+
+    for expression in alternation.into_inner() {
+        let mut sequence = Vec::<Expression>::new();
+        for sub_expression in expression.into_inner() {
+            sequence.push(parse_expression(sub_expression));
+        }
+        regex.0.push(sequence);
+    }
+
+    regex
 }
 
 fn parse_character(expr: Pair<Rule>) -> Char {
@@ -150,6 +152,36 @@ fn parse_expression(expr: Pair<Rule>) -> Expression {
             }
 
             Expression::String(chars)
+        },
+        Rule::group => {
+            let mut group_type = GroupType::Capturing;
+            let mut regex = Regex(Vec::new());
+
+            for g in expr.into_inner() {
+                match g.as_rule() {
+                    Rule::group_modifier => {
+                        match g.as_str() {
+                            "(?=" => group_type = GroupType::PositiveLookahead,
+                            "(?!" => group_type = GroupType::NegativeLookahead,
+                            "(?<=" => group_type = GroupType::PositiveLookbehind,
+                            "(?<!" => group_type = GroupType::NegativeLookbehind,
+                            "(?:" => group_type = GroupType::NonCapturing,
+                            "(" => group_type = GroupType::Capturing,
+                            _ => unreachable!()
+                        }
+                    },
+                    Rule::alternation => {
+                        regex = parse_alternation(g);
+                    },
+                    Rule::EOI => (),
+                    _ => unreachable!()
+                }
+            }
+
+            Expression::Group(Group {
+                group_type,
+                regex
+            })
         },
         _ => unreachable!()
     }

@@ -67,6 +67,6 @@ group_modifier = {
 }
 group = { "(" ~ group_modifier? ~ alternation ~ ")" }
 expression = { (character_group | characters | group)+ }
-alternation = _{ expression ~ ("|" ~ expression)* }
+alternation = { expression ~ ("|" ~ expression)* }
 
 regex = { SOI ~ alternation* ~ EOI }
