@@ -61,9 +61,10 @@ characters = { character+ }
 
 group_modifier = {
 	#lookahead = "?=" |
-    #negative_lokoahead = "?!" |
+    #negative_lookahead = "?!" |
     #lookbehind = "?<=" |
-    #negative_lookbehind = "?<!"
+    #negative_lookbehind = "?<!" |
+    #non_capturing = "?:"
 }
 group = { "(" ~ group_modifier? ~ alternation ~ ")" }
 expression = { (character_group | characters | group)+ }

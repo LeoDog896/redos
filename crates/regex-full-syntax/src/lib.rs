@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use std::str::FromStr;
 
 use pest::Parser;
 use pest::iterators::Pair;
@@ -42,6 +43,36 @@ enum GroupType {
     NegativeLookbehind,
     NonCapturing,
     Capturing,
+}
+
+impl Display for GroupType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GroupType::PositiveLookahead => write!(f, "?=")?,
+            GroupType::NegativeLookahead => write!(f, "?!")?,
+            GroupType::PositiveLookbehind => write!(f, "?<=")?,
+            GroupType::NegativeLookbehind => write!(f, "?<!")?,
+            GroupType::NonCapturing => write!(f, "?:")?,
+            GroupType::Capturing => (),
+        }
+
+        Ok(())
+    }
+}
+
+impl FromStr for GroupType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "?=" => Ok(GroupType::PositiveLookahead),
+            "?!" => Ok(GroupType::NegativeLookahead),
+            "?<=" => Ok(GroupType::PositiveLookbehind),
+            "?<!" => Ok(GroupType::NegativeLookbehind),
+            "?:" => Ok(GroupType::NonCapturing),
+            _ => Err(())
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -90,7 +121,7 @@ impl Display for Regex {
                         write!(f, "]")?;
                     },
                     Expression::Group(group) => {
-                        write!(f, "({})", group.regex)?;
+                        write!(f, "({}{})", group.group_type, group.regex)?;
                     },
                 }
             }
@@ -160,15 +191,7 @@ fn parse_expression(expr: Pair<Rule>) -> Expression {
             for g in expr.into_inner() {
                 match g.as_rule() {
                     Rule::group_modifier => {
-                        match g.as_str() {
-                            "(?=" => group_type = GroupType::PositiveLookahead,
-                            "(?!" => group_type = GroupType::NegativeLookahead,
-                            "(?<=" => group_type = GroupType::PositiveLookbehind,
-                            "(?<!" => group_type = GroupType::NegativeLookbehind,
-                            "(?:" => group_type = GroupType::NonCapturing,
-                            "(" => group_type = GroupType::Capturing,
-                            _ => unreachable!()
-                        }
+                        group_type = GroupType::from_str(g.as_str()).unwrap();
                     },
                     Rule::alternation => {
                         regex = parse_alternation(g);
