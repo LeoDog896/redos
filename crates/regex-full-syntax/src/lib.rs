@@ -36,6 +36,59 @@ impl Display for Char {
 }
 
 #[derive(Debug)]
+struct QuantifiableChar {
+    char: Char,
+    quantifier: Option<Quantifier>,
+}
+
+impl Display for QuantifiableChar {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}{}", self.char, self.quantifier)
+    }
+}
+
+#[derive(Debug)]
+enum Quantifier {
+    ZeroOrOne,
+    ZeroOrMore,
+    OneOrMore,
+    UpperBoundedRange(Option<usize>, usize),
+    LowerBoundedRange(usize, Option<usize>),
+}
+
+impl Display for Quantifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Quantifier::ZeroOrOne => write!(f, "?")?,
+            Quantifier::ZeroOrMore => write!(f, "*")?,
+            Quantifier::OneOrMore => write!(f, "+")?,
+            Quantifier::UpperBoundedRange(min, max) => {
+                if let Some(min) = min {
+                    write!(f, "{{{},", min)?;
+                } else {
+                    write!(f, "{{,")?;
+                }
+
+                write!(f, "{}", max)?;
+
+                write!(f, "}}")?;
+            },
+            Quantifier::LowerBoundedRange(min, max) => {
+                write!(f, "{{{},", min)?;
+
+                if let Some(max) = max {
+                    write!(f, "{}", max)?;
+                }
+
+                write!(f, "}}")?;
+            },
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
 enum GroupType {
     PositiveLookahead,
     NegativeLookahead,
@@ -79,11 +132,12 @@ impl FromStr for GroupType {
 struct Group {
     group_type: GroupType,
     regex: Regex,
+    quantifier: Option<Quantifier>,
 }
 
 #[derive(Debug)]
 enum Expression {
-    String(Vec<Char>),
+    String(Vec<QuantifiableChar>),
     CharacterClass(Vec<Char>),
     Group(Group),
 }
@@ -170,12 +224,15 @@ fn parse_character(expr: Pair<Rule>) -> Char {
 fn parse_expression(expr: Pair<Rule>) -> Expression {
     match expr.as_rule() {
         Rule::characters => {
-            let mut chars = Vec::<Char>::new();
+            let mut chars = Vec::<QuantifiableChar>::new();
 
             for c in expr.into_inner() {
                 match c.as_rule() {
                     Rule::character => {
-                        chars.push(parse_character(c));
+                        chars.push(QuantifiableChar {
+                            char: parse_character(c),
+                            quantifier: None
+                        });
                     },
                     Rule::EOI => (),
                     _ => unreachable!()
@@ -203,7 +260,8 @@ fn parse_expression(expr: Pair<Rule>) -> Expression {
 
             Expression::Group(Group {
                 group_type,
-                regex
+                regex,
+                quantifier: None,
             })
         },
         _ => unreachable!()
