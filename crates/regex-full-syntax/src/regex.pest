@@ -1,8 +1,8 @@
 // modifiers
 
-// quantifier can either be:
+// count can either be:
 // {n}, {n,} {n,a}, {,n}
-quantifier = {
+count = {
 	"{" ~
     ((ASCII_DIGIT ~
     	("," ~ ASCII_DIGIT?)?
@@ -10,35 +10,54 @@ quantifier = {
     ~ "}"
 }
 
-modifier = {
-	#plus = "+" |
-    #star = "*" |
-    quantifier |
-    #optional = "?"
+plus = { "+" }
+star = { "*" }
+lazy = { "?" }
+
+quantifier = {
+	((plus | star | count) ~ lazy?) | lazy
 }
 
 // characters
 
+char_linefeed = { "\\n" }
+char_carriage_return = { "\\r" }
+char_vertical_tab = { "\\v" }
+char_form_feed = { "\\f" }
+char_horizontal_tab = { "\\t" }
+char_digit = { "\\d" }
+char_non_digit = { "\\D" }
+char_word = { "\\w" }
+char_non_word = { "\\W" }
+char_whitespace = { "\\s" }
+char_non_whitespace = { "\\S" }
+char_backslash = { "\\\\" }
+char_escaped = { "\\" ~ ASCII }
+
 char = _{
-	#linefeed = "\\n" |
-    #carriage_return = "\\r" |
-    #vertical_tab = "\\v" |
-    #form_feed = "\\f" |
-    #horizontal_tab = "\\t" |
-    #digit = "\\d" |
-    #non_digit = "\\D" |
-    #word = "\\w" |
-    #non_word = "\\W" |
-    #whitespace = "\\s" |
-    #non_whitespace = "\\S" |
-    #backslash = "\\" |
+	char_linefeed |
+    char_carriage_return |
+    char_vertical_tab |
+    char_form_feed |
+    char_horizontal_tab |
+    char_digit |
+    char_non_digit |
+    char_word |
+    char_non_word |
+    char_whitespace |
+    char_non_whitespace |
+    char_backslash |
+    char_escaped |
     #symbol = (ASCII_ALPHANUMERIC | " ")
 }
 
+char_beginning = { "^" }
+char_end = { "$" }
+char_any_character = { "." }
 all_char = {
-	#beginning = "^" |
-    #end = "$" |
-    #any_character = "." |
+    char_beginning |
+    char_end |
+    char_any_character |
     char
 }
 
@@ -50,8 +69,7 @@ character_group = {
     ~ "]"
 }
 
-character = { all_char ~ modifier? }
-characters = { character+ }
+characters = { (all_char ~ quantifier?)+ }
 
 // main grammar
 // regex has two parts of its main grammar:
@@ -66,7 +84,7 @@ group_modifier = {
     #negative_lookbehind = "?<!" |
     #non_capturing = "?:"
 }
-group = { "(" ~ group_modifier? ~ alternation ~ ")" }
+group = { "(" ~ group_modifier? ~ alternation ~ ")" ~ quantifier? }
 expression = { (character_group | characters | group)+ }
 alternation = { expression ~ ("|" ~ expression)* }
 

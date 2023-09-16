@@ -37,51 +37,33 @@ impl Display for Char {
 
 #[derive(Debug)]
 struct QuantifiableChar {
-    char: Char,
+    character: Char,
     quantifier: Option<Quantifier>,
 }
 
 impl Display for QuantifiableChar {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}{}", self.char, self.quantifier)
+        if let Some(quantifier) = &self.quantifier {
+            write!(f, "{}{}", self.character, quantifier)
+        } else {
+            write!(f, "{}", self.character)
+        }
     }
 }
 
 #[derive(Debug)]
 enum Quantifier {
-    ZeroOrOne,
-    ZeroOrMore,
-    OneOrMore,
-    UpperBoundedRange(Option<usize>, usize),
-    LowerBoundedRange(usize, Option<usize>),
+    UpperBound(usize),
+    LowerBound(usize),
+    BothBounds(usize, usize),
 }
 
 impl Display for Quantifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Quantifier::ZeroOrOne => write!(f, "?")?,
-            Quantifier::ZeroOrMore => write!(f, "*")?,
-            Quantifier::OneOrMore => write!(f, "+")?,
-            Quantifier::UpperBoundedRange(min, max) => {
-                if let Some(min) = min {
-                    write!(f, "{{{},", min)?;
-                } else {
-                    write!(f, "{{,")?;
-                }
-
-                write!(f, "{}", max)?;
-
-                write!(f, "}}")?;
-            },
-            Quantifier::LowerBoundedRange(min, max) => {
-                write!(f, "{{{},", min)?;
-
-                if let Some(max) = max {
-                    write!(f, "{}", max)?;
-                }
-
-                write!(f, "}}")?;
-            },
+            Quantifier::UpperBound(max) => write!(f, "{{,{}", max)?,
+            Quantifier::LowerBound(min) => write!(f, "{{{},}}", min)?,
+            Quantifier::BothBounds(min, max) => write!(f, "{{{}, {}}}", min, max)?,
         }
 
         Ok(())
@@ -215,28 +197,66 @@ fn parse_alternation(alternation: Pair<Rule>) -> Regex {
     regex
 }
 
-fn parse_character(expr: Pair<Rule>) -> Char {
-    assert!(expr.as_rule() == Rule::character);
+fn parse_quantifier(quantifier: Pair<Rule>) -> Quantifier {
+    match quantifier.as_rule() {
+        Rule::star => Quantifier::LowerBound(0),
+        Rule::plus => Quantifier::LowerBound(1),
+        Rule::lazy => Quantifier::BothBounds(0, 1),
+        Rule::count => {
+            let mut bounds = quantifier.into_inner();
 
-    Char::Literal(expr.as_str().to_string())
+            let min = bounds.next().unwrap().as_str().parse::<usize>().unwrap();
+            let max = bounds.next().unwrap().as_str().parse::<usize>().unwrap();
+
+            Quantifier::BothBounds(min, max)
+        },
+
+        _ => unreachable!()
+    }
+}
+
+fn parse_char(character: Pair<Rule>) -> Char {
+    let c = character.as_str();
+
+    if c.len() == 1 {
+        Char::Literal(c.to_string())
+    } else {
+        unimplemented!("Other characters")
+    }
 }
 
 fn parse_expression(expr: Pair<Rule>) -> Expression {
     match expr.as_rule() {
         Rule::characters => {
             let mut chars = Vec::<QuantifiableChar>::new();
+            let mut quantifier: Option<Quantifier> = None;
+            let mut current_char: Option<Char> = None;
 
             for c in expr.into_inner() {
                 match c.as_rule() {
-                    Rule::character => {
-                        chars.push(QuantifiableChar {
-                            char: parse_character(c),
-                            quantifier: None
-                        });
+                    Rule::all_char => {
+                        if let Some(character) = current_char {
+                            chars.push(QuantifiableChar {
+                                character,
+                                quantifier,
+                            });
+                            quantifier = None;
+                        }
+                        current_char = Some(parse_char(c));
+                    },
+                    Rule::quantifier => {
+                        quantifier = Some(parse_quantifier(c));
                     },
                     Rule::EOI => (),
                     _ => unreachable!()
                 }
+            }
+
+            if let Some(character) = current_char {
+                chars.push(QuantifiableChar {
+                    character,
+                    quantifier,
+                });
             }
 
             Expression::String(chars)
