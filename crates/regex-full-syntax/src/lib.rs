@@ -1,9 +1,9 @@
 use std::fmt::Display;
 use std::str::FromStr;
 
-use pest::Parser;
-use pest::iterators::Pair;
 use pest::error::Error;
+use pest::iterators::Pair;
+use pest::Parser;
 use pest_derive::Parser;
 
 #[derive(Parser)]
@@ -105,7 +105,7 @@ impl FromStr for GroupType {
             "?<=" => Ok(GroupType::PositiveLookbehind),
             "?<!" => Ok(GroupType::NegativeLookbehind),
             "?:" => Ok(GroupType::NonCapturing),
-            _ => Err(())
+            _ => Err(()),
         }
     }
 }
@@ -146,7 +146,7 @@ impl Display for Regex {
                         for c in chars {
                             write!(f, "{}", c)?;
                         }
-                    },
+                    }
                     Expression::CharacterClass(chars) => {
                         write!(f, "[")?;
 
@@ -155,10 +155,10 @@ impl Display for Regex {
                         }
 
                         write!(f, "]")?;
-                    },
+                    }
                     Expression::Group(group) => {
                         write!(f, "({}{})", group.group_type, group.regex)?;
-                    },
+                    }
                 }
             }
         }
@@ -178,9 +178,9 @@ pub fn parse(input: &str) -> Result<Regex, Error<Rule>> {
         match expression.as_rule() {
             Rule::alternation => {
                 return Ok(parse_alternation(expression));
-            },
+            }
             Rule::EOI => (),
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
@@ -213,9 +213,9 @@ fn parse_quantifier(quantifier: Pair<Rule>) -> Quantifier {
             let max = bounds.next().unwrap().as_str().parse::<usize>().unwrap();
 
             Quantifier(min, Some(max))
-        },
+        }
 
-        _ => unreachable!()
+        _ => unreachable!(),
     }
 }
 
@@ -247,12 +247,12 @@ fn parse_expression(expr: Pair<Rule>) -> Expression {
                             quantifier = None;
                         }
                         current_char = Some(parse_char(c));
-                    },
+                    }
                     Rule::quantifier => {
                         quantifier = Some(parse_quantifier(c));
-                    },
+                    }
                     Rule::EOI => (),
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 }
             }
 
@@ -264,7 +264,7 @@ fn parse_expression(expr: Pair<Rule>) -> Expression {
             }
 
             Expression::String(chars)
-        },
+        }
         Rule::group => {
             let mut group_type = GroupType::Capturing;
             let mut regex = Regex(Vec::new());
@@ -273,12 +273,12 @@ fn parse_expression(expr: Pair<Rule>) -> Expression {
                 match g.as_rule() {
                     Rule::group_modifier => {
                         group_type = GroupType::from_str(g.as_str()).unwrap();
-                    },
+                    }
                     Rule::alternation => {
                         regex = parse_alternation(g);
-                    },
+                    }
                     Rule::EOI => (),
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 }
             }
 
@@ -287,7 +287,7 @@ fn parse_expression(expr: Pair<Rule>) -> Expression {
                 regex,
                 quantifier: None,
             })
-        },
-        _ => unreachable!()
+        }
+        _ => unreachable!(),
     }
 }

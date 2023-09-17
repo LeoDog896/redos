@@ -1,11 +1,17 @@
 [package]
-name = "redos"
+name = "redos-cli"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[[bin]]
+name = "redos"
+path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.4.3", features = ["derive"] }
+ignore = "0.4.20"
 regex-nfa = { path = "../regex-nfa" }
+swc_common = { version = "0.32.1", features = ["tty-emitter"] }
+swc_ecma_ast = "0.109.1"
 swc_ecma_parser = { version = "0.140.0", features = ["typescript"] }
+swc_ecma_visit = "0.95.1"

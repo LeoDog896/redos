@@ -1,3 +1,1 @@
-fn parse() {
-    
-}
+fn parse() {}
