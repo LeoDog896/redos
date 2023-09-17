@@ -52,18 +52,18 @@ impl Display for QuantifiableChar {
 }
 
 #[derive(Debug)]
-enum Quantifier {
-    UpperBound(usize),
-    LowerBound(usize),
-    BothBounds(usize, usize),
-}
+struct Quantifier(usize, Option<usize>);
 
 impl Display for Quantifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Quantifier::UpperBound(max) => write!(f, "{{,{}", max)?,
-            Quantifier::LowerBound(min) => write!(f, "{{{},}}", min)?,
-            Quantifier::BothBounds(min, max) => write!(f, "{{{}, {}}}", min, max)?,
+        if let Some(max) = self.1 {
+            if self.0 == max {
+                write!(f, "{{{}}}", self.0)?;
+            } else {
+                write!(f, "{{{},{}}}", self.0, max)?;
+            }
+        } else {
+            write!(f, "{{{}}}", self.0)?;
         }
 
         Ok(())
@@ -167,6 +167,10 @@ impl Display for Regex {
     }
 }
 
+pub fn ast(input: &str) -> Result<Pair<Rule>, Error<Rule>> {
+    Ok(RegexParser::parse(Rule::regex, input)?.next().unwrap())
+}
+
 pub fn parse(input: &str) -> Result<Regex, Error<Rule>> {
     let regex_tokens = RegexParser::parse(Rule::regex, input)?.next().unwrap();
 
@@ -199,16 +203,16 @@ fn parse_alternation(alternation: Pair<Rule>) -> Regex {
 
 fn parse_quantifier(quantifier: Pair<Rule>) -> Quantifier {
     match quantifier.as_rule() {
-        Rule::star => Quantifier::LowerBound(0),
-        Rule::plus => Quantifier::LowerBound(1),
-        Rule::lazy => Quantifier::BothBounds(0, 1),
+        Rule::star => Quantifier(0, None),
+        Rule::plus => Quantifier(1, None),
+        Rule::lazy => Quantifier(0, Some(1)),
         Rule::count => {
             let mut bounds = quantifier.into_inner();
 
             let min = bounds.next().unwrap().as_str().parse::<usize>().unwrap();
             let max = bounds.next().unwrap().as_str().parse::<usize>().unwrap();
 
-            Quantifier::BothBounds(min, max)
+            Quantifier(min, Some(max))
         },
 
         _ => unreachable!()
