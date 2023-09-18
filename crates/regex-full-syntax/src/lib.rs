@@ -234,10 +234,10 @@ fn parse_quantifier(input: Pair<Rule>) -> Quantifier {
                 let mut bounds = token.into_inner();
 
                 let min = bounds.next().unwrap().as_str().parse::<usize>().unwrap();
-                let max = bounds.next().unwrap().as_str().parse::<usize>().unwrap();
+                let max = bounds.next().and_then(|max| max.as_str().parse::<usize>().ok());
 
                 quantifier.low = min;
-                quantifier.high = Some(max);
+                quantifier.high = max;
             }
 
             _ => unreachable!("Unknown rule: {:?}", token.as_rule()),
@@ -250,11 +250,7 @@ fn parse_quantifier(input: Pair<Rule>) -> Quantifier {
 fn parse_char(character: Pair<Rule>) -> Char {
     let c = character.as_str();
 
-    if c.len() == 1 {
-        Char::Literal(c.to_string())
-    } else {
-        unimplemented!("Other characters")
-    }
+    Char::Literal(c.to_string())
 }
 
 fn parse_expression(expr: Pair<Rule>) -> Expression {
@@ -320,6 +316,10 @@ fn parse_expression(expr: Pair<Rule>) -> Expression {
                 quantifier,
             })
         }
-        _ => unreachable!(),
+        Rule::character_group => {
+            // TODO: implement char group
+            Expression::CharacterClass(Vec::new())
+        },
+        _ => unreachable!("Unexpected rule {:?}", expr.as_rule()),
     }
 }

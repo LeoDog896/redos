@@ -9,6 +9,7 @@ use swc_common::{
     SourceMap,
 };
 use swc_ecma_ast::Regex;
+use swc_ecma_parser::TsConfig;
 use swc_ecma_parser::{lexer::Lexer, Parser, StringInput, Syntax};
 use swc_ecma_visit::{fold_module_item, Fold};
 
@@ -57,7 +58,13 @@ fn check_file(path: &Path) {
         .unwrap_or_else(|e| panic!("failed to load file: {}", e));
 
     let lexer = Lexer::new(
-        Syntax::Es(Default::default()),
+        Syntax::Typescript(TsConfig {
+            tsx: true,
+            decorators: true,
+            dts: false,
+            no_early_errors: true,
+            disallow_ambiguous_jsx_like: false,
+        }),
         Default::default(),
         StringInput::from(&*fm),
         None,

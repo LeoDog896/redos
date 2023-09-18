@@ -1,12 +1,12 @@
 // modifiers
 
+natural_number = { ASCII_DIGIT+ }
+
 // count can either be:
 // {n}, {n,} {n,a}, {,n}
 count = {
 	"{" ~
-    ((ASCII_DIGIT ~
-    	("," ~ ASCII_DIGIT?)?
-    ) | ("," ~ ASCII_DIGIT))
+    (natural_number ~ ("," ~ natural_number?)?)
     ~ "}"
 }
 
@@ -48,7 +48,7 @@ char = _{
     char_non_whitespace |
     char_backslash |
     char_escaped |
-    #symbol = (ASCII_ALPHANUMERIC | " ")
+    #symbol = (ASCII_ALPHANUMERIC | " " | ":" | "/" | "#" | "!" | "-" | "^" | "$")
 }
 
 char_beginning = { "^" }
@@ -58,6 +58,7 @@ all_char = {
     char_beginning |
     char_end |
     char_any_character |
+    "{" | "(" | "<" | "[" |
     char
 }
 
@@ -67,9 +68,10 @@ character_group = {
     ~ #negated = "^"? 
     ~ (range | all_char)* 
     ~ "]"
+    ~ quantifier?
 }
 
-characters = { (all_char ~ quantifier?)+ }
+characters = { (all_char ~ quantifier?) }
 
 // main grammar
 // regex has two parts of its main grammar:
@@ -85,7 +87,7 @@ group_modifier = {
     #non_capturing = "?:"
 }
 group = { "(" ~ group_modifier? ~ alternation ~ ")" ~ quantifier? }
-expression = { (character_group | characters | group)+ }
+expression = { (character_group | group | characters)+ }
 alternation = { expression ~ ("|" ~ expression)* }
 
 regex = { SOI ~ alternation* ~ EOI }
