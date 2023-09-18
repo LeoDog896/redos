@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
-use redos::safe;
 use clap::Parser as ClapParser;
 use ignore::WalkBuilder;
+use redos::safe;
 use swc_common::sync::Lrc;
 use swc_common::{
     errors::{ColorConfig, Handler},
@@ -31,8 +31,7 @@ const EXTENSIONS: [&str; 8] = ["js", "jsx", "ts", "tsx", "mjs", "cjs", "mts", "c
 
 fn main() {
     let args = Cli::parse();
-    let walk = WalkBuilder::new(args.directory.unwrap_or_else(|| ".".into()))
-        .build();
+    let walk = WalkBuilder::new(args.directory.unwrap_or_else(|| ".".into())).build();
 
     for entry in walk {
         let entry = entry.unwrap();

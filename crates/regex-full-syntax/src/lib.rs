@@ -52,18 +52,22 @@ impl Display for QuantifiableChar {
 }
 
 #[derive(Debug)]
-pub struct Quantifier(usize, Option<usize>);
+pub struct Quantifier {
+    low: usize,
+    high: Option<usize>,
+    lazy: bool,
+}
 
 impl Display for Quantifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(max) = self.1 {
-            if self.0 == max {
-                write!(f, "{{{}}}", self.0)?;
+        if let Some(max) = self.high {
+            if self.low == max {
+                write!(f, "{{{}}}", max)?;
             } else {
-                write!(f, "{{{},{}}}", self.0, max)?;
+                write!(f, "{{{},{}}}", self.low, max)?;
             }
         } else {
-            write!(f, "{{{}}}", self.0)?;
+            write!(f, "{{{},}}", self.low)?;
         }
 
         Ok(())
@@ -157,7 +161,11 @@ impl Display for Regex {
                         write!(f, "]")?;
                     }
                     Expression::Group(group) => {
-                        write!(f, "({}{})", group.group_type, group.regex)?;
+                        if let Some(quantifier) = &group.quantifier {
+                            write!(f, "({}{}){}", group.group_type, group.regex, quantifier)?;
+                        } else {
+                            write!(f, "({}{})", group.group_type, group.regex)?;
+                        }
                     }
                 }
             }
@@ -201,22 +209,42 @@ fn parse_alternation(alternation: Pair<Rule>) -> Regex {
     regex
 }
 
-fn parse_quantifier(quantifier: Pair<Rule>) -> Quantifier {
-    match quantifier.as_rule() {
-        Rule::star => Quantifier(0, None),
-        Rule::plus => Quantifier(1, None),
-        Rule::lazy => Quantifier(0, Some(1)),
-        Rule::count => {
-            let mut bounds = quantifier.into_inner();
+fn parse_quantifier(input: Pair<Rule>) -> Quantifier {
+    let mut quantifier = Quantifier {
+        low: 0,
+        high: None,
+        lazy: false,
+    };
 
-            let min = bounds.next().unwrap().as_str().parse::<usize>().unwrap();
-            let max = bounds.next().unwrap().as_str().parse::<usize>().unwrap();
+    for token in input.into_inner() {
+        match token.as_rule() {
+            Rule::star => {
+                quantifier.low = 0;
+                quantifier.high = None;
+            }
+            Rule::plus => {
+                quantifier.low = 1;
+                quantifier.high = None;
+            }
+            Rule::lazy => {
+                quantifier.low = 0;
+                quantifier.high = Some(1);
+            }
+            Rule::count => {
+                let mut bounds = token.into_inner();
 
-            Quantifier(min, Some(max))
+                let min = bounds.next().unwrap().as_str().parse::<usize>().unwrap();
+                let max = bounds.next().unwrap().as_str().parse::<usize>().unwrap();
+
+                quantifier.low = min;
+                quantifier.high = Some(max);
+            }
+
+            _ => unreachable!("Unknown rule: {:?}", token.as_rule()),
         }
-
-        _ => unreachable!(),
     }
+
+    quantifier
 }
 
 fn parse_char(character: Pair<Rule>) -> Char {
@@ -268,6 +296,7 @@ fn parse_expression(expr: Pair<Rule>) -> Expression {
         Rule::group => {
             let mut group_type = GroupType::Capturing;
             let mut regex = Regex(Vec::new());
+            let mut quantifier: Option<Quantifier> = None;
 
             for g in expr.into_inner() {
                 match g.as_rule() {
@@ -277,6 +306,9 @@ fn parse_expression(expr: Pair<Rule>) -> Expression {
                     Rule::alternation => {
                         regex = parse_alternation(g);
                     }
+                    Rule::quantifier => {
+                        quantifier = Some(parse_quantifier(g));
+                    }
                     Rule::EOI => (),
                     _ => unreachable!(),
                 }
@@ -285,7 +317,7 @@ fn parse_expression(expr: Pair<Rule>) -> Expression {
             Expression::Group(Group {
                 group_type,
                 regex,
-                quantifier: None,
+                quantifier,
             })
         }
         _ => unreachable!(),

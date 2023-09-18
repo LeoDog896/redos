@@ -6,7 +6,7 @@ pub fn safe(regex: &str) -> bool {
     for alternation in regex.0 {
         for expression in alternation {
             if let Expression::Group(_) = expression {
-                return false
+                return false;
             }
         }
     }
