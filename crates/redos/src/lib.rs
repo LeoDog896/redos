@@ -11,14 +11,14 @@ pub fn is_simple_regex(regex: Regex) -> bool {
                     }
 
                     return is_simple_regex(group.regex);
-                },
+                }
                 Expression::String(str) => {
                     for char in str {
                         if char.quantifier.is_some() {
                             return false;
                         }
                     }
-                },
+                }
                 Expression::CharacterClass(_) => (),
             }
         }
