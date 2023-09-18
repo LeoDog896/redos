@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use redos::safe;
 use clap::Parser as ClapParser;
 use ignore::WalkBuilder;
 use swc_common::sync::Lrc;
@@ -82,7 +83,9 @@ struct Visitor;
 
 impl Fold for Visitor {
     fn fold_regex(&mut self, regex: Regex) -> Regex {
-        println!("{}", regex.exp);
+        if !safe(&regex.exp.to_string()) {
+            println!("{}", regex.exp);
+        }
         regex
     }
 }

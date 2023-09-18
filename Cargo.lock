@@ -608,11 +608,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "redos"
+version = "0.1.0"
+dependencies = [
+ "regex-full-syntax",
+]
+
+[[package]]
 name = "redos-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
  "ignore",
+ "redos",
  "regex-nfa",
  "swc_common",
  "swc_ecma_ast",

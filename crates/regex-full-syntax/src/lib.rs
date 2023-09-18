@@ -11,7 +11,7 @@ use pest_derive::Parser;
 struct RegexParser;
 
 #[derive(Debug)]
-enum Char {
+pub enum Char {
     Literal(String),
     Escape(char),
     Any,
@@ -36,7 +36,7 @@ impl Display for Char {
 }
 
 #[derive(Debug)]
-struct QuantifiableChar {
+pub struct QuantifiableChar {
     character: Char,
     quantifier: Option<Quantifier>,
 }
@@ -52,7 +52,7 @@ impl Display for QuantifiableChar {
 }
 
 #[derive(Debug)]
-struct Quantifier(usize, Option<usize>);
+pub struct Quantifier(usize, Option<usize>);
 
 impl Display for Quantifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -71,7 +71,7 @@ impl Display for Quantifier {
 }
 
 #[derive(Debug)]
-enum GroupType {
+pub enum GroupType {
     PositiveLookahead,
     NegativeLookahead,
     PositiveLookbehind,
@@ -111,14 +111,14 @@ impl FromStr for GroupType {
 }
 
 #[derive(Debug)]
-struct Group {
+pub struct Group {
     group_type: GroupType,
     regex: Regex,
     quantifier: Option<Quantifier>,
 }
 
 #[derive(Debug)]
-enum Expression {
+pub enum Expression {
     String(Vec<QuantifiableChar>),
     CharacterClass(Vec<Char>),
     Group(Group),
@@ -127,7 +127,7 @@ enum Expression {
 /// A regular expression
 /// is an alternation of sequences of expressions
 #[derive(Debug)]
-pub struct Regex(Vec<Vec<Expression>>);
+pub struct Regex(pub Vec<Vec<Expression>>);
 
 impl Display for Regex {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
