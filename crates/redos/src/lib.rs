@@ -5,8 +5,10 @@ pub fn safe(regex: &str) -> bool {
     let regex = parse(regex).unwrap();
     for alternation in regex.0 {
         for expression in alternation {
-            if let Expression::Group(_) = expression {
-                return false;
+            if let Expression::Group(group) = expression {
+                if group.quantifier.is_some() {
+                    return false;
+                }
             }
         }
     }

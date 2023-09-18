@@ -37,8 +37,8 @@ impl Display for Char {
 
 #[derive(Debug)]
 pub struct QuantifiableChar {
-    character: Char,
-    quantifier: Option<Quantifier>,
+    pub character: Char,
+    pub quantifier: Option<Quantifier>,
 }
 
 impl Display for QuantifiableChar {
@@ -53,9 +53,9 @@ impl Display for QuantifiableChar {
 
 #[derive(Debug)]
 pub struct Quantifier {
-    low: usize,
-    high: Option<usize>,
-    lazy: bool,
+    pub low: usize,
+    pub high: Option<usize>,
+    pub lazy: bool,
 }
 
 impl Display for Quantifier {
@@ -116,9 +116,9 @@ impl FromStr for GroupType {
 
 #[derive(Debug)]
 pub struct Group {
-    group_type: GroupType,
-    regex: Regex,
-    quantifier: Option<Quantifier>,
+    pub group_type: GroupType,
+    pub regex: Regex,
+    pub quantifier: Option<Quantifier>,
 }
 
 #[derive(Debug)]
