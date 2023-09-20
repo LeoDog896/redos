@@ -1,3 +1,4 @@
+use core::panic;
 use std::path::{Path, PathBuf};
 
 use clap::Parser as ClapParser;
@@ -8,7 +9,7 @@ use swc_common::{
     errors::{ColorConfig, Handler},
     SourceMap,
 };
-use swc_ecma_ast::Regex;
+use swc_ecma_ast::{Regex, EsVersion};
 use swc_ecma_parser::TsConfig;
 use swc_ecma_parser::{lexer::Lexer, Parser, StringInput, Syntax};
 use swc_ecma_visit::{fold_module_item, Fold};
@@ -19,6 +20,9 @@ struct Cli {
     #[clap(short, long)]
     /// The directory to search for JavaScript files
     directory: Option<PathBuf>,
+    #[clap(short, long)]
+    /// Show every regex
+    all: bool,
     #[clap(short, long)]
     /// The glob patterns to include
     include: Vec<String>,
@@ -42,14 +46,14 @@ fn main() {
 
             if let Some(extension) = path.extension() {
                 if EXTENSIONS.contains(&extension.to_str().unwrap()) {
-                    check_file(path);
+                    check_file(path, args.all);
                 }
             }
         }
     }
 }
 
-fn check_file(path: &Path) {
+fn check_file(path: &Path, show_all: bool) {
     let cm: Lrc<SourceMap> = Default::default();
     let handler = Handler::with_tty_emitter(ColorConfig::Auto, true, false, Some(cm.clone()));
 
@@ -65,7 +69,7 @@ fn check_file(path: &Path) {
             no_early_errors: true,
             disallow_ambiguous_jsx_like: false,
         }),
-        Default::default(),
+        EsVersion::latest(),
         StringInput::from(&*fm),
         None,
     );
@@ -77,19 +81,27 @@ fn check_file(path: &Path) {
         .map_err(|e| {
             // Unrecoverable fatal error occurred
             e.into_diagnostic(&handler).emit()
-        })
-        .expect("failed to parser module");
+        });
 
-    for token in module.body {
-        fold_module_item(&mut Visitor, token);
+    match module {
+        Ok(module) => {
+            for token in module.body {
+                fold_module_item(&mut Visitor {
+                    show_all,
+                }, token);
+            }
+        },
+        Err(_) => (),
     }
 }
 
-struct Visitor;
+struct Visitor {
+    show_all: bool
+}
 
 impl Fold for Visitor {
     fn fold_regex(&mut self, regex: Regex) -> Regex {
-        if !safe(&regex.exp.to_string()) {
+        if !safe(&regex.exp.to_string()) || self.show_all {
             println!("{}", regex.exp);
         }
         regex

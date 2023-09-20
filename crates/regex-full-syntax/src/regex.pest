@@ -48,7 +48,7 @@ char = _{
     char_non_whitespace |
     char_backslash |
     char_escaped |
-    #symbol = (ASCII_ALPHANUMERIC | " " | ":" | "/" | "#" | "!" | "-" | "^" | "$")
+    (ASCII_ALPHANUMERIC | " " | ":" | "/" | "#" | "!" | "-" | "^" | "$" | "@" | "%" | "&" | "~" | "_" | "*" | "\"" | "=" | ">" | "`" | "," | "'" | ";")
 }
 
 char_beginning = { "^" }
@@ -58,7 +58,7 @@ all_char = {
     char_beginning |
     char_end |
     char_any_character |
-    "{" | "(" | "<" | "[" |
+    "{" | "(" | "<" | "[" | "?" | "*" | "+" | "}" | ")" | "|" |
     char
 }
 
