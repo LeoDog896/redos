@@ -12,10 +12,11 @@ For a regex to be vulnerable to ReDoS in general, we first immideately filter fo
 - Contains an terminal token, so that way the regex doesn't match (forcing the regex to do backtracking)
     - Thus we can immideately scan for regexes that contain a modifier, but don't end with it (e.g. `a+$`)
 
-### Overlapping Disjunction
+### Initial Overlapping Disjunction
 
 - There are at least two alternations in the group that share a common token (e.g. `(token|tokenq)+`)
     - There can be >2 alternations, and the others don't need to share a common token
+- The overlapping disjunction can be reached as the first token in the regex
 
 Small example: `(a|a)+$`
 
@@ -23,20 +24,38 @@ Complexity: `O(2^n)` (exponential)
 
 ### Nested Quantifier
 
-- A quantifier is present inside a group
+- A substantial quantifier is present inside any group that also is modified by a substantial quantifier
 
 Small example: `(a+)+$`
 
 Complexity: `O(2^n)` (exponential)
 
-### Prefix Node with Quantifier
+### Exponential Overlapping Adjacency
+
+- 2 tokens with big quantifiers are present in the group, and overlap
+
+Small example: `((a)(a+))+$`
+
+Complexity: `O(2^n)` (exponential)
+
+
+### Polynomial Overlapping Adjacency
+
+- 2 tokens with big quantifiers are present in the group, and overlap
+- The group doesn't need a big quantifier (e.g. `?` would work fine)
+
+Small example: `(a+a+)?$`
+
+Complexity: `O(n^2)` (polynomial)
+
+### Initial Large Quantifier
 
 - A quantifier is present in the regex with a substantial upper bound
-- The token that the quantifier is attatched to is the first token in the regex
+- The token that the quantifier is attatched to can be reached as the first token in the regex
 
 Small example: `a+$`
 
-Complexity: `O(n^2)` (k degree polynomial for every token with a quantifier)
+Complexity: `O(n^2)` (polynomial)
 
 ## Analysis
 
