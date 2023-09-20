@@ -32,15 +32,25 @@ pub fn safe(regex: &str) -> bool {
     let regex = parse(regex).unwrap();
     for alternation in regex.0 {
         for expression in alternation {
-            // looking for groups - if there's no groups, we can assume its safe
-            if let Expression::Group(group) = expression {
-                // and the group must have a quantifier
-                if group.quantifier.is_none() {
-                    continue;
-                }
+            match expression {
+                Expression::Group(group) => {
+                    // and the group must have a quantifier
+                    if group.quantifier.is_none() {
+                        continue;
+                    }
 
-                return is_simple_regex(group.regex);
-            }
+                    return is_simple_regex(group.regex);
+                },
+                Expression::String(str) => {
+                    for char in str {
+                        if char.quantifier.is_some() {
+                            return false;
+                        }
+                    }
+                },
+                // TODO: check if the character class is vulnerable
+                Expression::CharacterClass(_) => (),
+            };
         }
     }
 

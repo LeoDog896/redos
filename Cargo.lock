@@ -621,7 +621,6 @@ dependencies = [
  "clap",
  "ignore",
  "redos",
- "regex-nfa",
  "swc_common",
  "swc_ecma_ast",
  "swc_ecma_parser",
@@ -675,10 +674,6 @@ dependencies = [
  "pest",
  "pest_derive",
 ]
-
-[[package]]
-name = "regex-nfa"
-version = "0.1.0"
 
 [[package]]
 name = "regex-syntax"
