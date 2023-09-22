@@ -38,7 +38,6 @@ Small example: `((a)(a+))+$`
 
 Complexity: `O(2^n)` (exponential)
 
-
 ### Polynomial Overlapping Adjacency
 
 - 2 tokens with big quantifiers are present in the group, and overlap

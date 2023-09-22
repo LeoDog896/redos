@@ -180,7 +180,7 @@ pub fn ast(input: &str) -> Result<Pair<Rule>, Error<Rule>> {
 }
 
 pub fn parse(input: &str) -> Result<Regex, Error<Rule>> {
-    let regex_tokens = RegexParser::parse(Rule::regex, input)?.next().unwrap();
+    let regex_tokens = RegexParser::parse(Rule::regex, input).unwrap_or_else(|k| panic!("{}", k)).next().unwrap();
 
     for expression in regex_tokens.into_inner() {
         match expression.as_rule() {
