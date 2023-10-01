@@ -1,9 +1,13 @@
+mod repo;
+
 use core::panic;
 use std::path::{Path, PathBuf};
 
-use clap::Parser as ClapParser;
+use clap::{Parser as ClapParser, Subcommand};
 use ignore::WalkBuilder;
+use owo_colors::OwoColorize;
 use redos::vulnerabilities;
+use repo::parse_repository;
 use swc_common::sync::Lrc;
 use swc_common::{
     errors::{ColorConfig, Handler},
@@ -13,30 +17,54 @@ use swc_ecma_ast::{EsVersion, Regex};
 use swc_ecma_parser::TsConfig;
 use swc_ecma_parser::{lexer::Lexer, Parser, StringInput, Syntax};
 use swc_ecma_visit::{fold_module_item, Fold};
+use tempdir::TempDir;
+
+use crate::repo::download_repository;
 
 #[derive(ClapParser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    #[clap(short, long)]
-    /// The directory to search for JavaScript files
-    directory: Option<PathBuf>,
-    #[clap(short, long)]
-    /// Show every regex
-    all: bool,
-    #[clap(short, long)]
-    /// The glob patterns to include
-    include: Vec<String>,
-    #[clap(short, long)]
-    /// The glob patterns to exclude
-    exclude: Vec<String>,
+    #[clap(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    Scan {
+        #[command(subcommand)]
+        command: ScanCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum ScanCommand {
+    Local {
+        /// The directory to search for files
+        directory: Option<PathBuf>,
+        #[clap(short, long)]
+        /// Show every regex
+        all: bool,
+        #[clap(short, long)]
+        /// The glob patterns to include
+        include: Vec<String>,
+        #[clap(short, long)]
+        /// The glob patterns to exclude
+        exclude: Vec<String>,
+    },
+    Git {
+        /// The repository to scan
+        repository: String,
+        /// Show every regex
+        #[clap(short, long)]
+        all: bool,
+    },
 }
 
 /// List of scanned extensions
 const EXTENSIONS: [&str; 8] = ["js", "jsx", "ts", "tsx", "mjs", "cjs", "mts", "cts"];
 
-fn main() {
-    let args = Cli::parse();
-    let walk = WalkBuilder::new(args.directory.unwrap_or_else(|| ".".into())).build();
+fn local_scan(all: bool, directory: Option<PathBuf>) {
+    let walk = WalkBuilder::new(directory.unwrap_or_else(|| ".".into())).build();
 
     for entry in walk {
         let entry = entry.unwrap();
@@ -46,10 +74,37 @@ fn main() {
 
             if let Some(extension) = path.extension() {
                 if EXTENSIONS.contains(&extension.to_str().unwrap()) {
-                    check_file(path, args.all);
+                    check_file(path, all);
                 }
             }
         }
+    }
+}
+
+fn main() {
+    let args = Cli::parse();
+    match args.command {
+        Commands::Scan { command } => match command {
+            ScanCommand::Local {
+                all,
+                directory,
+                include: _,
+                exclude: _,
+            } => {
+                local_scan(all, directory);
+            }
+            ScanCommand::Git { repository, all } => {
+                let (_, repository) = parse_repository(&repository).unwrap();
+                let directory = TempDir::new("redos").unwrap();
+                download_repository(&repository, directory.path().to_path_buf()).unwrap();
+                println!(
+                    "Downloaded repository to {}",
+                    directory.path().to_str().unwrap()
+                );
+
+                local_scan(all, Some(directory.into_path()));
+            }
+        },
     }
 }
 
@@ -84,7 +139,13 @@ fn check_file(path: &Path, show_all: bool) {
     match module {
         Ok(module) => {
             for token in module.body {
-                fold_module_item(&mut Visitor { show_all }, token);
+                fold_module_item(
+                    &mut Visitor {
+                        show_all,
+                        path: path.into(),
+                    },
+                    token,
+                );
             }
         }
         Err(_) => (),
@@ -93,12 +154,14 @@ fn check_file(path: &Path, show_all: bool) {
 
 struct Visitor {
     show_all: bool,
+    path: PathBuf,
 }
 
 impl Fold for Visitor {
     fn fold_regex(&mut self, regex: Regex) -> Regex {
         if !vulnerabilities(&regex.exp.to_string()).is_empty() || self.show_all {
-            println!("{}", regex.exp);
+            println!("{}", self.path.to_str().unwrap());
+            println!("  {}", regex.exp.red());
         }
         regex
     }

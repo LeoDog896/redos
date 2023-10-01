@@ -1,7 +1,9 @@
-edition = "2021"
-
 [workspace]
 resolver = "2"
 members = [
     "crates/*",
 ]
+
+[profile.release]
+lto = true
+codegen-units = 1
