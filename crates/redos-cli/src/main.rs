@@ -3,13 +3,13 @@ use std::path::{Path, PathBuf};
 
 use clap::Parser as ClapParser;
 use ignore::WalkBuilder;
-use redos::safe;
+use redos::vulnerabilities;
 use swc_common::sync::Lrc;
 use swc_common::{
     errors::{ColorConfig, Handler},
     SourceMap,
 };
-use swc_ecma_ast::{Regex, EsVersion};
+use swc_ecma_ast::{EsVersion, Regex};
 use swc_ecma_parser::TsConfig;
 use swc_ecma_parser::{lexer::Lexer, Parser, StringInput, Syntax};
 use swc_ecma_visit::{fold_module_item, Fold};
@@ -76,32 +76,28 @@ fn check_file(path: &Path, show_all: bool) {
 
     let mut parser = Parser::new_from(lexer);
 
-    let module = parser
-        .parse_module()
-        .map_err(|e| {
-            // Unrecoverable fatal error occurred
-            e.into_diagnostic(&handler).emit()
-        });
+    let module = parser.parse_module().map_err(|e| {
+        // Unrecoverable fatal error occurred
+        e.into_diagnostic(&handler).emit()
+    });
 
     match module {
         Ok(module) => {
             for token in module.body {
-                fold_module_item(&mut Visitor {
-                    show_all,
-                }, token);
+                fold_module_item(&mut Visitor { show_all }, token);
             }
-        },
+        }
         Err(_) => (),
     }
 }
 
 struct Visitor {
-    show_all: bool
+    show_all: bool,
 }
 
 impl Fold for Visitor {
     fn fold_regex(&mut self, regex: Regex) -> Regex {
-        if !safe(&regex.exp.to_string()) || self.show_all {
+        if !vulnerabilities(&regex.exp.to_string()).is_empty() || self.show_all {
             println!("{}", regex.exp);
         }
         regex
