@@ -44,6 +44,9 @@ enum ScanCommand {
         #[clap(short, long)]
         /// Show every regex
         all: bool,
+        /// Display them raw
+        #[clap(short, long)]
+        raw: bool,
         #[clap(short, long)]
         /// The glob patterns to include
         include: Vec<String>,
@@ -57,13 +60,16 @@ enum ScanCommand {
         /// Show every regex
         #[clap(short, long)]
         all: bool,
+        /// Display them raw
+        #[clap(short, long)]
+        raw: bool,
     },
 }
 
 /// List of scanned extensions
 const EXTENSIONS: [&str; 8] = ["js", "jsx", "ts", "tsx", "mjs", "cjs", "mts", "cts"];
 
-fn local_scan(all: bool, directory: Option<PathBuf>) {
+fn local_scan(all: bool, raw: bool, directory: Option<PathBuf>) {
     let walk = WalkBuilder::new(directory.unwrap_or_else(|| ".".into())).build();
 
     for entry in walk {
@@ -74,7 +80,7 @@ fn local_scan(all: bool, directory: Option<PathBuf>) {
 
             if let Some(extension) = path.extension() {
                 if EXTENSIONS.contains(&extension.to_str().unwrap()) {
-                    check_file(path, all);
+                    check_file(path, raw, all);
                 }
             }
         }
@@ -90,10 +96,15 @@ fn main() {
                 directory,
                 include: _,
                 exclude: _,
+                raw,
             } => {
-                local_scan(all, directory);
+                local_scan(all, raw, directory);
             }
-            ScanCommand::Git { repository, all } => {
+            ScanCommand::Git {
+                repository,
+                all,
+                raw,
+            } => {
                 let (_, repository) = parse_repository(&repository).unwrap();
                 let directory = TempDir::new("redos").unwrap();
                 download_repository(&repository, directory.path().to_path_buf()).unwrap();
@@ -102,13 +113,13 @@ fn main() {
                     directory.path().to_str().unwrap()
                 );
 
-                local_scan(all, Some(directory.into_path()));
+                local_scan(all, raw, Some(directory.into_path()));
             }
         },
     }
 }
 
-fn check_file(path: &Path, show_all: bool) {
+fn check_file(path: &Path, raw: bool, show_all: bool) {
     let cm: Lrc<SourceMap> = Default::default();
     let handler = Handler::with_tty_emitter(ColorConfig::Auto, true, false, Some(cm.clone()));
 
@@ -142,6 +153,7 @@ fn check_file(path: &Path, show_all: bool) {
                 fold_module_item(
                     &mut Visitor {
                         show_all,
+                        raw,
                         path: path.into(),
                     },
                     token,
@@ -155,13 +167,18 @@ fn check_file(path: &Path, show_all: bool) {
 struct Visitor {
     show_all: bool,
     path: PathBuf,
+    raw: bool,
 }
 
 impl Fold for Visitor {
     fn fold_regex(&mut self, regex: Regex) -> Regex {
-        if !vulnerabilities(&regex.exp.to_string()).is_empty() || self.show_all {
-            println!("{}", self.path.to_str().unwrap());
-            println!("  {}", regex.exp.red());
+        if self.show_all || !vulnerabilities(&regex.exp.to_string()).is_empty() {
+            if self.raw {
+                println!("{}", regex.exp);
+            } else {
+                println!("{}", self.path.to_str().unwrap());
+                println!("  {}", regex.exp.red());
+            }
         }
         regex
     }

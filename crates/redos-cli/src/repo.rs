@@ -52,7 +52,7 @@ pub fn parse_repository(i: &str) -> IResult<&str, Repository> {
     })(i)?;
     let (i, owner) = terminated(word, tag("/"))(i)?;
     let (i, name) = word(i)?;
-    // TODO: parse reference
+    // TODO: parse reference - possible method is git ls-remote
     let (i, _) = opt(preceded(tag("#"), word))(i)?;
     let (i, _) = eof(i)?;
 
