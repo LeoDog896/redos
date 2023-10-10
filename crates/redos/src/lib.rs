@@ -1,3 +1,5 @@
+mod parse;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Vulnerability {
     ExponentialOverlappingDisjunction,
