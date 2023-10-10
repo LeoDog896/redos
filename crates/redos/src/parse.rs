@@ -27,9 +27,19 @@ fn literal(i: &str) -> IResult<&str, String> {
     Ok((i, hit))
 }
 
+/// Parse regex character literals outside of a character class
+fn regex_literal(i: &str) -> IResult<&str, String> {
+    let (i, hit) = alt((literal, tag(".").map(|_| ".".to_string())));
+
+    Ok((i, hit))
+}
+
 /// Parses regex character literals, laxed since they're inside a character class
 fn character_class_literal(i: &str) -> IResult<&str, String> {
-    let (i, hit) = alt((literal, alt((tag("$"), tag("^"))).map(|_| "".to_string())))(i)?;
+    let (i, hit) = alt((
+        literal,
+        alt((tag("$"), tag("^"), tag("|"))).map(|x| x.to_string()),
+    ))(i)?;
 
     Ok((i, hit))
 }
