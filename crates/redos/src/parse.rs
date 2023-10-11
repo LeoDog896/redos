@@ -62,7 +62,7 @@ fn character_class(i: &str) -> IResult<&str, &str> {
         tag("["),
         alt((
             // TODO: properly find attack string for negated character classes
-            pair(tag("^"), many1(literal)).map(|_| "TODO:NEGATED"),
+            pair(tag("^"), many1(character_class_literal)).map(|_| "TODO:NEGATED"),
             many1(character_class_literal).map(|s| *s.first().unwrap()),
         )),
         tag("]"),
