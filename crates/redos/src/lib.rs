@@ -1,18 +1,7 @@
-mod parse;
+pub mod parse;
+pub mod vulnerability;
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Vulnerability {
-    ExponentialOverlappingDisjunction,
-    OverlappingAdjacency(Complexity),
-    NestedQuantifier,
-    InitialQuantifier,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum Complexity {
-    Exponential,
-    Polynomial,
-}
+use vulnerability::Vulnerability;
 
 /// Returns the list of vulnerabilities in a regex
 pub fn vulnerabilities(regex: &str) -> Vec<Vulnerability> {
