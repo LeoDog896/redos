@@ -2,9 +2,9 @@ use crate::vulnerability::Vulnerability;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take},
-    character::complete::{alphanumeric1, one_of},
+    character::complete::one_of,
     combinator::recognize,
-    multi::{many0, many1, separated_list0},
+    multi::{many0, separated_list0},
     sequence::{delimited, pair},
     IResult, Parser,
 };
@@ -22,6 +22,7 @@ fn literal(i: &str) -> IResult<&str, &str> {
         tag("\\x").map(|_| "\0"),
         // general escape character
         pair(tag("\\"), take(1 as usize)).map(|(_, s): (&str, &str)| s.split_at(1).1),
+        tag("\\\\").map(|_| "\\"),
         // character classes
         tag("\\d").map(|_| "0"),
         tag("\\D").map(|_| "D"),
@@ -29,9 +30,13 @@ fn literal(i: &str) -> IResult<&str, &str> {
         tag("\\W").map(|_| "0"),
         tag("\\s").map(|_| " "),
         tag("\\S").map(|_| "S"),
+        // TODO: unicode support for \uXXXX and \x{XXXX}
+        // TODO: unicode categories
         // other symbols: we can just put "." as a dot since it matches everything
-        recognize(one_of("!@#%&_~`.<>/")),
-        alphanumeric1,
+        // (refactor)TODO: better alphanumeric support (alphanumberic1 exists but it matches multiple)
+        recognize(one_of(
+            "!@#%&_~`.<>/abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890",
+        )),
     ))(i)?;
 
     Ok((i, hit))
@@ -69,7 +74,8 @@ fn character_class(i: &str) -> IResult<&str, &str> {
             }),
             // we can just get the first char here - ranges don't truly matter
             // TODO: [] sets don't match with *anything*
-            many0(character_class_literal).map(|s| *s.first().expect("No support for empty ranges yet")),
+            many0(character_class_literal)
+                .map(|s| *s.first().expect("No support for empty ranges yet")),
         )),
         tag("]"),
     )(i)?;
