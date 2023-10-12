@@ -1,3 +1,8 @@
+//! Regex parsing.
+//! Should attempt to comply with as many generic regex rules as possible.
+//! Links:
+//!     - https://docs.python.org/3/library/re.html#regular-expression-syntax
+
 use crate::vulnerability::Vulnerability;
 use nom::{
     branch::alt,
@@ -5,7 +10,7 @@ use nom::{
     character::complete::one_of,
     combinator::recognize,
     multi::{many0, separated_list0},
-    sequence::{delimited, pair},
+    sequence::{delimited, preceded, separated_pair},
     IResult, Parser,
 };
 
@@ -20,8 +25,10 @@ fn literal(i: &str) -> IResult<&str, &str> {
         tag("\\f").map(|_| "\x0C"),
         tag("\\0").map(|_| "\0"),
         tag("\\x").map(|_| "\0"),
+        // TODO: unicode support for \uXXXX and \x{XXXX}
+        // TODO: unicode categories
         // general escape character
-        pair(tag("\\"), take(1 as usize)).map(|(_, s): (&str, &str)| s.split_at(1).1),
+        preceded(tag("\\"), take(1 as usize)),
         tag("\\\\").map(|_| "\\"),
         // character classes
         tag("\\d").map(|_| "0"),
@@ -30,8 +37,6 @@ fn literal(i: &str) -> IResult<&str, &str> {
         tag("\\W").map(|_| "0"),
         tag("\\s").map(|_| " "),
         tag("\\S").map(|_| "S"),
-        // TODO: unicode support for \uXXXX and \x{XXXX}
-        // TODO: unicode categories
         // other symbols: we can just put "." as a dot since it matches everything
         // (refactor)TODO: better alphanumeric support (alphanumberic1 exists but it matches multiple)
         recognize(one_of(
@@ -54,45 +59,71 @@ fn character_class_literal(i: &str) -> IResult<&str, &str> {
     ))(i)
 }
 
-/// Parses a character class, returning a string that can match with it
-fn character_class(i: &str) -> IResult<&str, &str> {
+/// Parses a range to be used inside a character class
+fn range(i: &str) -> IResult<&str, (&str, &str)> {
+    separated_pair(character_class_literal, tag("-"), character_class_literal)(i)
+}
+
+/// Parses a character class, returning a string that can match with it.
+/// We must own the returned String here, as this function sometimes doesn't
+/// produce a result owned by the input string.
+fn character_class(i: &str) -> IResult<&str, Option<String>> {
     delimited(
         tag("["),
         alt((
-            pair(tag("^"), many0(character_class_literal)).map(|(_, negation)| {
+            preceded(
+                tag("^"),
+                // we turn the literal into a subrange
+                many0(alt((range, character_class_literal.map(|x| (x, x))))),
+            )
+            .map(|negation| {
                 if negation.len() == 0 {
-                    "." // [^] is the same as . in regex
+                    Some(".".to_string()) // [^] is the same as . in regex
                 } else {
-                    unreachable!("TODO: support negation & ranges")
+                    // turn the negation vec into a hashmap
+                    let mut negation_map = std::collections::HashMap::new();
+                    for (start, end) in negation {
+                        negation_map.insert(start, end);
+                    }
+
+                    // go through every unicode character and check if it's in the negation map, till we find one that isn't
+                    for i in 0..std::u32::MAX {
+                        let c = std::char::from_u32(i).unwrap();
+                        if !negation_map.contains_key(&c.to_string().as_str()) {
+                            return Some(c.to_string());
+                        }
+                    }
+
+                    None
                 }
             }),
             // we can just get the first char here - ranges don't truly matter
             // TODO: [] sets don't match with *anything*
-            many0(character_class_literal)
-                .map(|s| *s.first().expect("No support for empty ranges yet")),
+            many0(character_class_literal).map(|s| s.first().map(|x| x.to_string())),
         )),
         tag("]"),
     )(i)
 }
 
 /// Parses a group, returning an attack string & potential vulnerabilities.
-fn group(i: &str) -> IResult<&str, Vec<Vec<&str>>> {
+fn group(i: &str) -> IResult<&str, Vec<Vec<Option<String>>>> {
     // TODO: support group types
     delimited(tag("("), regex, tag(")"))(i)
 }
 
 /// Parses a "piece" of a regex, i.e. a single group or char, and returns an attack string
-fn piece(i: &str) -> IResult<&str, &str> {
+fn piece(i: &str) -> IResult<&str, Option<String>> {
     // TODO: group support
     // TODO: actual detection
-    alt((character_class, regex_literal))(i)
+    // TODO: quantifier support (lazy & non-lazy)
+    alt((character_class, regex_literal.map(|x| Some(x.to_string()))))(i)
 }
 
 /// Parses every alternation of a regex, returning a Vec of Vec<attack strings>.
 /// Each element in the top-level Vec is a different alternation.
-fn regex(i: &str) -> IResult<&str, Vec<Vec<&str>>> {
+fn regex(i: &str) -> IResult<&str, Vec<Vec<Option<String>>>> {
     // TODO: separate with | char
-    // TODO: proper parsing support for empty alternations
+    // TODO: proper parsing support for cancelled alternations (e.g. a||b)
     separated_list0(tag("|"), many0(piece))(i)
 }
 
