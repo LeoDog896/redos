@@ -119,12 +119,6 @@ fn character_class(i: &str) -> IResult<&str, Option<String>> {
     )(i)
 }
 
-/// Parses a group, returning an attack string & potential vulnerabilities.
-fn group(i: &str) -> IResult<&str, Vec<Vec<Option<String>>>> {
-    // TODO: support group types
-    delimited(tag("("), regex, tag(")"))(i)
-}
-
 struct Quantifier {
     range: (u32, Option<u32>),
     lazy: bool,
@@ -174,6 +168,12 @@ fn quantifier(i: &str) -> IResult<&str, Quantifier> {
             }
         },
     )(i)
+}
+
+/// Parses a group, returning an attack string & potential vulnerabilities.
+fn group(i: &str) -> IResult<&str, Vec<Vec<Option<String>>>> {
+    // TODO: support group types
+    delimited(tag("("), regex, tag(")"))(i)
 }
 
 /// Parses a "piece" of a regex, i.e. a single group or char, and returns an attack string
