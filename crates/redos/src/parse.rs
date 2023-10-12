@@ -1,7 +1,7 @@
 //! Regex parsing.
 //! Should attempt to comply with as many generic regex rules as possible.
 //! Links:
-//!     - https://docs.python.org/3/library/re.html#regular-expression-syntax
+//!     - <https://docs.python.org/3/library/re.html#regular-expression-syntax>
 
 use crate::vulnerability::Vulnerability;
 use nom::{
@@ -28,7 +28,7 @@ fn literal(i: &str) -> IResult<&str, &str> {
         // TODO: unicode support for \uXXXX and \x{XXXX}
         // TODO: unicode categories
         // general escape character
-        preceded(tag("\\"), take(1 as usize)),
+        preceded(tag("\\"), take(1_usize)),
         tag("\\\\").map(|_| "\\"),
         // character classes
         tag("\\d").map(|_| "0"),
@@ -77,7 +77,7 @@ fn character_class(i: &str) -> IResult<&str, Option<String>> {
                 many0(alt((range, character_class_literal.map(|x| (x, x))))),
             )
             .map(|negation| {
-                if negation.len() == 0 {
+                if negation.is_empty() {
                     Some(".".to_string()) // [^] is the same as . in regex
                 } else {
                     // turn the negation vec into a hashmap
@@ -90,9 +90,7 @@ fn character_class(i: &str) -> IResult<&str, Option<String>> {
                     let mut i = 0;
                     while i < std::u32::MAX {
                         let c = std::char::from_u32(i).unwrap();
-                        if !negation_map.contains_key(&c.to_string().as_str()) {
-                            return Some(c.to_string());
-                        } else {
+                        if negation_map.contains_key(&c.to_string().as_str()) {
                             // if we're at the end of the map, we can just return None
                             if i == std::u32::MAX - 1 {
                                 return None;
@@ -102,6 +100,8 @@ fn character_class(i: &str) -> IResult<&str, Option<String>> {
                                 .chars()
                                 .next()
                                 .unwrap() as u32;
+                        } else {
+                            return Some(c.to_string());
                         }
 
                         i += 1;
@@ -119,6 +119,9 @@ fn character_class(i: &str) -> IResult<&str, Option<String>> {
     )(i)
 }
 
+/// A regex quantifier, with a range and a lazy flag
+/// Represents {lower, Option<upper>}[?]
+#[derive(Debug, PartialEq, Eq)]
 struct Quantifier {
     range: (u32, Option<u32>),
     lazy: bool,
@@ -149,11 +152,19 @@ fn quantifier(i: &str) -> IResult<&str, Quantifier> {
                 map(tag("+"), |_| (1, None)),
                 map(tag("?"), |_| (0, Some(1))),
                 map(
-                    pair(digit1::<&str, _>, opt(preceded(tag(","), opt(digit1)))),
-                    |(a, b)| {
+                    delimited(
+                        tag("{"),
+                        pair(digit1::<&str, _>, opt(pair(tag(","), opt(digit1)))),
+                        tag("}"),
+                    ),
+                    |(lower, opt)| {
                         (
-                            a.parse::<u32>().unwrap(),
-                            b.flatten().map(|x| x.parse::<u32>().unwrap()),
+                            lower.parse::<u32>().unwrap(),
+                            if let Some((_, opt)) = opt {
+                                opt.map(|x| x.parse::<u32>().unwrap())
+                            } else {
+                                Some(lower.parse::<u32>().unwrap())
+                            },
                         )
                     },
                 ),
@@ -201,5 +212,23 @@ mod tests {
         assert_eq!(character_class("[-token]"), Ok(("", Some("-".to_string()))));
         assert_eq!(character_class("[^a]"), Ok(("", Some("\x00".to_string()))));
         // TODO: when we have unicode ranges, test without a null char.
+    }
+
+    #[test]
+    fn quantifier_hit() {
+        assert_eq!(quantifier("*"), Ok(("", Quantifier::range(0, None))));
+        assert_eq!(quantifier("+"), Ok(("", Quantifier::range(1, None))));
+        assert_eq!(quantifier("?"), Ok(("", Quantifier::range(0, Some(1)))));
+        assert_eq!(quantifier("{1}"), Ok(("", Quantifier::range(1, Some(1)))));
+        assert_eq!(quantifier("{1,}"), Ok(("", Quantifier::range(1, None))));
+        assert_eq!(
+            quantifier("{1,24}"),
+            Ok(("", Quantifier::range(1, Some(24))))
+        );
+        assert_eq!(
+            quantifier("{1,212}?"),
+            Ok(("", Quantifier::lazy(1, Some(212))))
+        );
+        assert_eq!(quantifier("*?"), Ok(("", Quantifier::lazy(0, None))));
     }
 }

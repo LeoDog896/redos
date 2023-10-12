@@ -144,23 +144,20 @@ fn check_file(path: &Path, raw: bool, show_all: bool) {
 
     let module = parser.parse_module().map_err(|e| {
         // Unrecoverable fatal error occurred
-        e.into_diagnostic(&handler).emit()
+        e.into_diagnostic(&handler).emit();
     });
 
-    match module {
-        Ok(module) => {
-            for token in module.body {
-                fold_module_item(
-                    &mut Visitor {
-                        show_all,
-                        raw,
-                        path: path.into(),
-                    },
-                    token,
-                );
-            }
+    if let Ok(module) = module {
+        for token in module.body {
+            fold_module_item(
+                &mut Visitor {
+                    show_all,
+                    raw,
+                    path: path.into(),
+                },
+                token,
+            );
         }
-        Err(_) => (),
     }
 }
 
@@ -172,7 +169,7 @@ struct Visitor {
 
 impl Fold for Visitor {
     fn fold_regex(&mut self, regex: Regex) -> Regex {
-        if self.show_all || !vulnerabilities(&regex.exp.to_string()).is_empty() {
+        if self.show_all || !vulnerabilities(regex.exp.as_ref()).is_empty() {
             if self.raw {
                 println!("{}", regex.exp);
             } else {

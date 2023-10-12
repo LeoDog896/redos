@@ -44,10 +44,9 @@ fn word(input: &str) -> IResult<&str, &str> {
 /// Format: [host]:[owner]/[name]#[reference]
 pub fn parse_repository(i: &str) -> IResult<&str, Repository> {
     let (i, host) = map_res(opt(terminated(word, tag(":"))), |h| match h {
-        Some("github") => Ok(Host::GitHub),
+        None | Some("github") => Ok(Host::GitHub),
         Some("gitlab") => Ok(Host::GitLab),
         Some("bitbucket") => Ok(Host::BitBucket),
-        None => Ok(Host::GitHub),
         _ => Err(anyhow!("Invalid host")),
     })(i)?;
     let (i, owner) = terminated(word, tag("/"))(i)?;
@@ -84,7 +83,7 @@ pub fn download_repository(repository: &Repository, directory: PathBuf) -> Resul
         ),
     };
 
-    println!("Fetching {}...", url);
+    println!("Fetching {url}...");
 
     let bytes = reqwest::blocking::get(&url)?.bytes()?;
 
