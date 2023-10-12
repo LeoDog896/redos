@@ -4,7 +4,7 @@ use nom::{
     bytes::complete::{tag, take},
     character::complete::{alphanumeric1, one_of},
     combinator::recognize,
-    multi::many1,
+    multi::{many1, many0},
     sequence::{delimited, pair},
     IResult, Parser,
 };
@@ -71,9 +71,32 @@ fn character_class(i: &str) -> IResult<&str, &str> {
     Ok((i, hit))
 }
 
+/// Parses a group, returning an attack string & potential vulnerabilities.
+fn group(i: &str) -> IResult<&str, &str> {
+    // TODO: support group types
+    let (i, hit) = delimited(tag("("), piece, tag(")"))(i)?;
+
+    Ok((i, hit))
+}
+
 /// Parses a "piece" of a regex, i.e. a single group or char, and returns an attack string
 fn piece(i: &str) -> IResult<&str, &str> {
     // TODO: group support
     // TODO: actual detection
-    alt((character_class, regex_literal))(i)
+    alt((character_class, group, regex_literal))(i)
+}
+
+/// Parses every alternation of a regex, returning a Vec of attack strings
+fn regex(i: &str) -> IResult<&str, Vec<&str>> {
+    // TODO: separate with | char
+    let (i, hits) = many0(piece)(i)?;
+
+    Ok((i, hits))
+}
+
+#[cfg(test)]
+mod tests {
+    fn safe() {
+
+    }
 }
