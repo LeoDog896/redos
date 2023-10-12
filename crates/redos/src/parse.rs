@@ -4,7 +4,7 @@ use nom::{
     bytes::complete::{tag, take},
     character::complete::{alphanumeric1, one_of},
     combinator::recognize,
-    multi::{many1, many0},
+    multi::{many0, many1, separated_list0},
     sequence::{delimited, pair},
     IResult, Parser,
 };
@@ -21,7 +21,7 @@ fn literal(i: &str) -> IResult<&str, &str> {
         tag("\\0").map(|_| "\0"),
         tag("\\x").map(|_| "\0"),
         // general escape character
-        pair(tag("\\"), take(1 as usize)).map(|(_, s): (&str, &str)| s.split_at(1).0),
+        pair(tag("\\"), take(1 as usize)).map(|(_, s): (&str, &str)| s.split_at(1).1),
         // character classes
         tag("\\d").map(|_| "0"),
         tag("\\D").map(|_| "D"),
@@ -30,7 +30,7 @@ fn literal(i: &str) -> IResult<&str, &str> {
         tag("\\s").map(|_| " "),
         tag("\\S").map(|_| "S"),
         // other symbols: we can just put "." as a dot since it matches everything
-        recognize(one_of("!@#%&_~`.<>")),
+        recognize(one_of("!@#%&_~`.<>/")),
         alphanumeric1,
     ))(i)?;
 
@@ -49,7 +49,7 @@ fn character_class_literal(i: &str) -> IResult<&str, &str> {
     let (i, hit) = alt((
         literal,
         recognize(one_of("$^|.?*{}[()")),
-        tag("\\]").map(|_| "]"),
+        // we dont need to check for \\] since we do that in literal already
     ))(i)?;
 
     Ok((i, hit))
@@ -57,13 +57,19 @@ fn character_class_literal(i: &str) -> IResult<&str, &str> {
 
 /// Parses a character class, returning a string that can match with it
 fn character_class(i: &str) -> IResult<&str, &str> {
-    // TODO: support ranges
     let (i, hit) = delimited(
         tag("["),
         alt((
-            // TODO: properly find attack string for negated character classes
-            pair(tag("^"), many1(character_class_literal)).map(|_| "TODO:NEGATED"),
-            many1(character_class_literal).map(|s| *s.first().unwrap()),
+            pair(tag("^"), many0(character_class_literal)).map(|(_, negation)| {
+                if negation.len() == 0 {
+                    "." // [^] is the same as . in regex
+                } else {
+                    unreachable!("TODO: support negation & ranges")
+                }
+            }),
+            // we can just get the first char here - ranges don't truly matter
+            // TODO: [] sets don't match with *anything*
+            many0(character_class_literal).map(|s| *s.first().expect("No support for empty ranges yet")),
         )),
         tag("]"),
     )(i)?;
@@ -72,9 +78,9 @@ fn character_class(i: &str) -> IResult<&str, &str> {
 }
 
 /// Parses a group, returning an attack string & potential vulnerabilities.
-fn group(i: &str) -> IResult<&str, &str> {
+fn group(i: &str) -> IResult<&str, Vec<Vec<&str>>> {
     // TODO: support group types
-    let (i, hit) = delimited(tag("("), piece, tag(")"))(i)?;
+    let (i, hit) = delimited(tag("("), regex, tag(")"))(i)?;
 
     Ok((i, hit))
 }
@@ -83,20 +89,20 @@ fn group(i: &str) -> IResult<&str, &str> {
 fn piece(i: &str) -> IResult<&str, &str> {
     // TODO: group support
     // TODO: actual detection
-    alt((character_class, group, regex_literal))(i)
+    alt((character_class, regex_literal))(i)
 }
 
-/// Parses every alternation of a regex, returning a Vec of attack strings
-fn regex(i: &str) -> IResult<&str, Vec<&str>> {
+/// Parses every alternation of a regex, returning a Vec of Vec<attack strings>.
+/// Each element in the top-level Vec is a different alternation.
+fn regex(i: &str) -> IResult<&str, Vec<Vec<&str>>> {
     // TODO: separate with | char
-    let (i, hits) = many0(piece)(i)?;
+    // TODO: proper parsing support for empty alternations
+    let (i, hits) = separated_list0(tag("|"), many0(piece))(i)?;
 
     Ok((i, hits))
 }
 
 #[cfg(test)]
 mod tests {
-    fn safe() {
-
-    }
+    fn safe() {}
 }
