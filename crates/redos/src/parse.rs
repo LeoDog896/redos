@@ -87,11 +87,24 @@ fn character_class(i: &str) -> IResult<&str, Option<String>> {
                     }
 
                     // go through every unicode character and check if it's in the negation map, till we find one that isn't
-                    for i in 0..std::u32::MAX {
+                    let mut i = 0;
+                    while i < std::u32::MAX {
                         let c = std::char::from_u32(i).unwrap();
                         if !negation_map.contains_key(&c.to_string().as_str()) {
                             return Some(c.to_string());
+                        } else {
+                            // if we're at the end of the map, we can just return None
+                            if i == std::u32::MAX - 1 {
+                                return None;
+                            }
+
+                            i = negation_map[&c.to_string().as_str()]
+                                .chars()
+                                .next()
+                                .unwrap() as u32;
                         }
+
+                        i += 1;
                     }
 
                     None
@@ -122,7 +135,6 @@ fn piece(i: &str) -> IResult<&str, Option<String>> {
 /// Parses every alternation of a regex, returning a Vec of Vec<attack strings>.
 /// Each element in the top-level Vec is a different alternation.
 fn regex(i: &str) -> IResult<&str, Vec<Vec<Option<String>>>> {
-    // TODO: separate with | char
     // TODO: proper parsing support for cancelled alternations (e.g. a||b)
     separated_list0(tag("|"), many0(piece))(i)
 }
