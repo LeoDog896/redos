@@ -112,7 +112,8 @@ fn character_class(i: &str) -> IResult<&str, Option<String>> {
             }),
             // we can just get the first char here - ranges don't truly matter
             // TODO: [] sets don't match with *anything*
-            many0(character_class_literal).map(|s| s.first().map(|x| x.to_string())),
+            many0(alt((character_class_literal, tag("-"))))
+                .map(|s| s.first().map(|x| x.to_string())),
         )),
         tag("]"),
     )(i)
@@ -141,5 +142,13 @@ fn regex(i: &str) -> IResult<&str, Vec<Vec<Option<String>>>> {
 
 #[cfg(test)]
 mod tests {
-    fn safe() {}
+    use super::*;
+
+    #[test]
+    fn character_class_hit() {
+        assert_eq!(character_class("[ba-cd]"), Ok(("", Some("b".to_string()))));
+        assert_eq!(character_class("[-token]"), Ok(("", Some("-".to_string()))));
+        assert_eq!(character_class("[^a]"), Ok(("", Some("\x00".to_string()))));
+        // TODO: when we have unicode ranges, test without a null char.
+    }
 }
