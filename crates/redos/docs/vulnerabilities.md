@@ -37,9 +37,8 @@ Complexity: `O(2^n)` (exponential)
 ## Polynomial Overlapping Adjacency
 
 - 2 tokens with big quantifiers are present in the group, and overlap
-- The group doesn't need a big quantifier (e.g. `?` would work fine)
 
-Small example: `[token](a+a+)?$`
+Small example: `[token](a+a+)$`
 
 Complexity: `O(n^2)` (polynomial)
 

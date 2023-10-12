@@ -7,10 +7,10 @@ use crate::vulnerability::Vulnerability;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take},
-    character::complete::one_of,
-    combinator::recognize,
+    character::complete::{digit1, one_of},
+    combinator::{map, opt, recognize},
     multi::{many0, separated_list0},
-    sequence::{delimited, preceded, separated_pair},
+    sequence::{delimited, pair, preceded, separated_pair},
     IResult, Parser,
 };
 
@@ -123,6 +123,57 @@ fn character_class(i: &str) -> IResult<&str, Option<String>> {
 fn group(i: &str) -> IResult<&str, Vec<Vec<Option<String>>>> {
     // TODO: support group types
     delimited(tag("("), regex, tag(")"))(i)
+}
+
+struct Quantifier {
+    range: (u32, Option<u32>),
+    lazy: bool,
+}
+
+impl Quantifier {
+    fn range(lower: u32, upper: Option<u32>) -> Self {
+        Self {
+            range: (lower, upper),
+            lazy: false,
+        }
+    }
+
+    fn lazy(lower: u32, upper: Option<u32>) -> Self {
+        Self {
+            range: (lower, upper),
+            lazy: true,
+        }
+    }
+}
+
+/// Parses a regex quantifier, returning its bounds
+fn quantifier(i: &str) -> IResult<&str, Quantifier> {
+    map(
+        pair(
+            alt((
+                map(tag("*"), |_| (0, None)),
+                map(tag("+"), |_| (1, None)),
+                map(tag("?"), |_| (0, Some(1))),
+                map(
+                    pair(digit1::<&str, _>, opt(preceded(tag(","), opt(digit1)))),
+                    |(a, b)| {
+                        (
+                            a.parse::<u32>().unwrap(),
+                            b.flatten().map(|x| x.parse::<u32>().unwrap()),
+                        )
+                    },
+                ),
+            )),
+            opt(tag("?")),
+        ),
+        |(range, lazy)| {
+            if lazy.is_some() {
+                Quantifier::lazy(range.0, range.1)
+            } else {
+                Quantifier::range(range.0, range.1)
+            }
+        },
+    )(i)
 }
 
 /// Parses a "piece" of a regex, i.e. a single group or char, and returns an attack string
