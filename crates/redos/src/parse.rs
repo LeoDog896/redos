@@ -11,7 +11,7 @@ use nom::{
 
 /// Parses regex character literals, returning a string that can match with it
 fn literal(i: &str) -> IResult<&str, &str> {
-    let (i, hit) = alt((
+    alt((
         // escape characters
         tag("\\n").map(|_| "\n"),
         tag("\\t").map(|_| "\t"),
@@ -37,32 +37,26 @@ fn literal(i: &str) -> IResult<&str, &str> {
         recognize(one_of(
             "!@#%&_~`.<>/abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890",
         )),
-    ))(i)?;
-
-    Ok((i, hit))
+    ))(i)
 }
 
 /// Parse regex character literals outside of a character class
 fn regex_literal(i: &str) -> IResult<&str, &str> {
-    let (i, hit) = alt((literal, recognize(one_of("-"))))(i)?;
-
-    Ok((i, hit))
+    alt((literal, recognize(one_of("-"))))(i)
 }
 
 /// Parses regex character literals, laxed since they're inside a character class
 fn character_class_literal(i: &str) -> IResult<&str, &str> {
-    let (i, hit) = alt((
+    alt((
         literal,
         recognize(one_of("$^|.?*{}[()")),
         // we dont need to check for \\] since we do that in literal already
-    ))(i)?;
-
-    Ok((i, hit))
+    ))(i)
 }
 
 /// Parses a character class, returning a string that can match with it
 fn character_class(i: &str) -> IResult<&str, &str> {
-    let (i, hit) = delimited(
+    delimited(
         tag("["),
         alt((
             pair(tag("^"), many0(character_class_literal)).map(|(_, negation)| {
@@ -78,17 +72,13 @@ fn character_class(i: &str) -> IResult<&str, &str> {
                 .map(|s| *s.first().expect("No support for empty ranges yet")),
         )),
         tag("]"),
-    )(i)?;
-
-    Ok((i, hit))
+    )(i)
 }
 
 /// Parses a group, returning an attack string & potential vulnerabilities.
 fn group(i: &str) -> IResult<&str, Vec<Vec<&str>>> {
     // TODO: support group types
-    let (i, hit) = delimited(tag("("), regex, tag(")"))(i)?;
-
-    Ok((i, hit))
+    delimited(tag("("), regex, tag(")"))(i)
 }
 
 /// Parses a "piece" of a regex, i.e. a single group or char, and returns an attack string
@@ -103,9 +93,7 @@ fn piece(i: &str) -> IResult<&str, &str> {
 fn regex(i: &str) -> IResult<&str, Vec<Vec<&str>>> {
     // TODO: separate with | char
     // TODO: proper parsing support for empty alternations
-    let (i, hits) = separated_list0(tag("|"), many0(piece))(i)?;
-
-    Ok((i, hits))
+    separated_list0(tag("|"), many0(piece))(i)
 }
 
 #[cfg(test)]
