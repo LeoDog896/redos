@@ -16,6 +16,7 @@ use nom::{
     IResult, Parser,
 };
 
+/// Utility method to transform an output into a Cow
 fn cow<'a, B, I, O, E, F>(mut parser: F) -> impl FnMut(I) -> IResult<I, Cow<'a, B>, E>
 where
     F: Parser<I, O, E>,
@@ -30,35 +31,45 @@ where
 
 /// Parses regex character literals, returning a string that can match with it
 fn literal(i: &str) -> IResult<&str, Cow<str>> {
-    cow(alt((
-        // escape characters
-        value("\n", tag("\\n")),
-        value("\t", tag("\\t")),
-        value("\r", tag("\\r")),
-        value("\x0B", tag("\\v")),
-        value("\x0C", tag("\\f")),
-        value("\0", tag("\\0")),
-        value("\0", tag("\\x")),
-        // preceded(tag("\\u"), many_m_n(4, 4, recognize(one_of("0123456789abcdef"))))
-        //     .map(|hex| std::char::from_u32(u32::from_str_radix(hex.join(""), 16).unwrap()).unwrap().to_string()),
+    alt((
+        // Unicode support: Since unicode transforms the input, we need to own it
         // TODO: unicode support for \x{XXXX}
         // TODO: unicode categories
-        // general escape character
-        preceded(tag("\\"), take(1_usize)),
-        value("\\\\", tag("\\")),
-        // character classes
-        value("0", tag("\\d")),
-        value("D", tag("\\D")),
-        value("w", tag("\\w")),
-        value("0", tag("\\W")),
-        value(" ", tag("\\s")),
-        value("S", tag("\\S")),
-        // other symbols: we can just put "." as a dot since it matches everything
-        // (refactor)TODO: better alphanumeric support (alphanumberic1 exists but it matches multiple)
-        recognize(one_of(
-            "!@#%&_~`.<>/abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890",
-        )),
-    )))(i)
+        cow(preceded(
+            tag("\\u"),
+            many_m_n(4, 4, recognize(one_of("0123456789abcdefABCDEF"))),
+        )
+        .map(|hex| {
+            std::char::from_u32(u32::from_str_radix(&hex.join("").to_lowercase(), 16).unwrap())
+                .unwrap()
+                .to_string()
+        })),
+        cow(alt((
+            // escape characters
+            value("\n", tag("\\n")),
+            value("\t", tag("\\t")),
+            value("\r", tag("\\r")),
+            value("\x0B", tag("\\v")),
+            value("\x0C", tag("\\f")),
+            value("\0", tag("\\0")),
+            value("\0", tag("\\x")),
+            // general escape character
+            preceded(tag("\\"), take(1_usize)),
+            value("\\\\", tag("\\")),
+            // character classes
+            value("0", tag("\\d")),
+            value("D", tag("\\D")),
+            value("w", tag("\\w")),
+            value("0", tag("\\W")),
+            value(" ", tag("\\s")),
+            value("S", tag("\\S")),
+            // other symbols: we can just put "." as a dot since it matches everything
+            // (refactor)TODO: better alphanumeric support (alphanumberic1 exists but it matches multiple)
+            recognize(one_of(
+                "!@#%&_~`.<>/abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890",
+            )),
+        ))),
+    ))(i)
 }
 
 /// Parse regex character literals outside of a character class
@@ -107,20 +118,14 @@ fn character_class(i: &str) -> IResult<&str, Option<Cow<str>>> {
 
                     // go through every unicode character and check if it's in the negation map, till we find one that isn't
                     let mut i = 0;
-                    while i < std::u32::MAX {
+                    // only go up to u16::MAX since we don't need to check for unicode characters above that
+                    while i <= std::u16::MAX as u32 {
                         let c = std::char::from_u32(i).unwrap();
                         if negation_map.contains_key(&c.to_string()) {
-                            // if we're at the end of the map, we can just return None
-                            if i == std::u32::MAX - 1 {
-                                return None;
-                            }
-
-                            i = negation_map[&c.to_string()].chars().next().unwrap() as u32;
+                            i = negation_map[&c.to_string()].chars().next().unwrap() as u32 + 1;
                         } else {
                             return Some(Cow::Owned(c.to_string()));
                         }
-
-                        i += 1;
                     }
 
                     None
@@ -130,7 +135,7 @@ fn character_class(i: &str) -> IResult<&str, Option<Cow<str>>> {
             // TODO: [] sets don't match with *anything*
             many0(alt((
                 character_class_literal,
-                cow::<str, _, _, _, _>(tag("-")),
+                cow(tag("-")),
             )))
             .map(|s| s.first().cloned()),
         )),
@@ -230,6 +235,10 @@ mod tests {
         assert_eq!(character_class("[ba-cd]"), Ok(("", Some("b".into()))));
         assert_eq!(character_class("[-token]"), Ok(("", Some("-".into()))));
         assert_eq!(character_class("[^a]"), Ok(("", Some("\x00".into()))));
+        assert_eq!(character_class("[^\\u0000-\\u0021]"), Ok(("", Some("\x22".into()))));
+        assert_eq!(character_class("[^\\u0000-\\u0021\\u0023-\\uFFFF]"), Ok(("", Some("\x22".into()))));
+        assert_eq!(character_class("[^\\u0022-\\uFFFF\\u0000-\\u0021]"), Ok(("", None)));
+        assert_eq!(character_class("[^\\u0000-\\u0021\\u0022-\\uFFFE]"), Ok(("", Some("\u{FFFF}".into()))));
         // TODO: when we have unicode ranges, test without a null char.
     }
 
