@@ -133,11 +133,7 @@ fn character_class(i: &str) -> IResult<&str, Option<Cow<str>>> {
             }),
             // we can just get the first char here - ranges don't truly matter
             // TODO: [] sets don't match with *anything*
-            many0(alt((
-                character_class_literal,
-                cow(tag("-")),
-            )))
-            .map(|s| s.first().cloned()),
+            many0(alt((character_class_literal, cow(tag("-"))))).map(|s| s.first().cloned()),
         )),
         tag("]"),
     )(i)
@@ -205,25 +201,55 @@ fn quantifier(i: &str) -> IResult<&str, Quantifier> {
     )(i)
 }
 
+struct Piece<'a> {
+    quantifier: Option<Quantifier>,
+    attack: Cow<'a, str>,
+}
+
 /// Parses a group, returning an attack string & potential vulnerabilities.
-fn group(i: &str) -> IResult<&str, Vec<Vec<Option<Cow<str>>>>> {
+fn group(i: &str) -> IResult<&str, Vec<Vec<Piece>>> {
     // TODO: support group types
     delimited(tag("("), regex, tag(")"))(i)
 }
 
 /// Parses a "piece" of a regex, i.e. a single group or char, and returns an attack string
-fn piece(i: &str) -> IResult<&str, Option<Cow<str>>> {
-    // TODO: group support
-    // TODO: actual detection
-    // TODO: quantifier support (lazy & non-lazy)
-    alt((character_class, regex_literal.map(Some)))(i)
+fn piece(i: &str) -> IResult<&str, Option<Piece>> {
+    map(
+        pair(
+            // TODO: group support
+            // TODO: actual detection
+            alt((character_class, regex_literal.map(Some))),
+            opt(quantifier),
+        ),
+        |(data, quantifier)| {
+            if let Some(data) = data {
+                Some(Piece {
+                    quantifier,
+                    attack: data,
+                })
+            } else {
+                None
+            }
+        },
+    )(i)
 }
 
 /// Parses every alternation of a regex, returning a Vec of Vec<attack strings>.
 /// Each element in the top-level Vec is a different alternation.
-fn regex(i: &str) -> IResult<&str, Vec<Vec<Option<Cow<str>>>>> {
-    // TODO: proper parsing support for cancelled alternations (e.g. a||b)
-    separated_list0(tag("|"), many0(piece))(i)
+fn regex(i: &str) -> IResult<&str, Vec<Vec<Piece>>> {
+    map(separated_list0(tag("|"), many0(piece)), |alternations| {
+        alternations
+            .into_iter()
+            .map(|alternation| {
+                // alternation is some Vec of Option - cut it off the moment we hit None
+                alternation
+                    .into_iter()
+                    .take_while(|x| x.is_some())
+                    .map(|x| x.expect("alternation should no longer contain None"))
+                    .collect()
+            })
+            .collect()
+    })(i)
 }
 
 #[cfg(test)]
@@ -235,10 +261,22 @@ mod tests {
         assert_eq!(character_class("[ba-cd]"), Ok(("", Some("b".into()))));
         assert_eq!(character_class("[-token]"), Ok(("", Some("-".into()))));
         assert_eq!(character_class("[^a]"), Ok(("", Some("\x00".into()))));
-        assert_eq!(character_class("[^\\u0000-\\u0021]"), Ok(("", Some("\x22".into()))));
-        assert_eq!(character_class("[^\\u0000-\\u0021\\u0023-\\uFFFF]"), Ok(("", Some("\x22".into()))));
-        assert_eq!(character_class("[^\\u0022-\\uFFFF\\u0000-\\u0021]"), Ok(("", None)));
-        assert_eq!(character_class("[^\\u0000-\\u0021\\u0022-\\uFFFE]"), Ok(("", Some("\u{FFFF}".into()))));
+        assert_eq!(
+            character_class("[^\\u0000-\\u0021]"),
+            Ok(("", Some("\x22".into())))
+        );
+        assert_eq!(
+            character_class("[^\\u0000-\\u0021\\u0023-\\uFFFF]"),
+            Ok(("", Some("\x22".into())))
+        );
+        assert_eq!(
+            character_class("[^\\u0022-\\uFFFF\\u0000-\\u0021]"),
+            Ok(("", None))
+        );
+        assert_eq!(
+            character_class("[^\\u0000-\\u0021\\u0022-\\uFFFE]"),
+            Ok(("", Some("\u{FFFF}".into())))
+        );
         // TODO: when we have unicode ranges, test without a null char.
     }
 
