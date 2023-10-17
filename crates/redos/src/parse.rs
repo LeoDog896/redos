@@ -202,7 +202,9 @@ fn quantifier(i: &str) -> IResult<&str, Quantifier> {
 }
 
 struct Piece<'a> {
+    /// The quantifier attatched to this piece
     quantifier: Option<Quantifier>,
+    /// The attack string for this piece.
     attack: Cow<'a, str>,
 }
 
