@@ -14,7 +14,7 @@ For a regex to be vulnerable to ReDoS in general, we first immideately filter fo
     - There can be >2 alternations, and the others don't need to share a common token
 - The overlapping disjunction can be reached as the first token in the regex
 
-Small example: `[token](a|a)+$`
+Small example: `b(a|a)+$`
 
 Complexity: `O(2^n)` (exponential)
 
@@ -22,7 +22,7 @@ Complexity: `O(2^n)` (exponential)
 
 - A substantial quantifier is present inside any group that also is modified by a substantial quantifier
 
-Small example: `[token](a+)+$`
+Small example: `b(a+)+$`
 
 Complexity: `O(2^n)` (exponential)
 
@@ -30,7 +30,7 @@ Complexity: `O(2^n)` (exponential)
 
 - 2 tokens with big quantifiers are present in the group, and overlap
 
-Small example: `[token](aa+)+$`
+Small example: `b(aa+)+$`
 
 Complexity: `O(2^n)` (exponential)
 
@@ -38,7 +38,7 @@ Complexity: `O(2^n)` (exponential)
 
 - 2 tokens with big quantifiers are present in the group, and overlap
 
-Small example: `[token](a+a+)$`
+Small example: `b(a+a+)$`
 
 Complexity: `O(n^2)` (polynomial)
 
