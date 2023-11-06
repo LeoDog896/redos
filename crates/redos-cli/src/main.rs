@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use clap::{Parser as ClapParser, Subcommand};
 use ignore::WalkBuilder;
 use owo_colors::OwoColorize;
+use redos::parse::regex;
 use redos::vulnerabilities;
 use repo::parse_repository;
 use swc_common::sync::Lrc;
@@ -34,6 +35,10 @@ enum Commands {
         #[command(subcommand)]
         command: ScanCommand,
     },
+    Ast {
+        /// The regex to parse
+        regex: String,
+    }
 }
 
 #[derive(Subcommand)]
@@ -116,6 +121,9 @@ fn main() {
                 local_scan(all, raw, Some(directory.into_path()));
             }
         },
+        Commands::Ast { regex: regex_source } => {
+            println!("{:#?}", regex(regex_source.as_str()));
+        }
     }
 }
 
@@ -173,7 +181,7 @@ impl Fold for Visitor {
             if self.raw {
                 println!("{}", regex.exp);
             } else {
-                println!("{}", self.path.to_str().unwrap());
+                println!("{}:{}", self.path.to_str().unwrap(), regex.span.lo.0);
                 println!("  {}", regex.exp.red());
             }
         }
