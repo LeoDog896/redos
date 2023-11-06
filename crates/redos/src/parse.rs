@@ -9,9 +9,9 @@ use nom::{
     branch::alt,
     bytes::complete::{tag, take},
     character::complete::{digit1, one_of},
-    combinator::{map, opt, recognize, value},
+    combinator::{map, opt, recognize, value, eof},
     multi::{many0, many_m_n, separated_list0},
-    sequence::{delimited, pair, preceded, separated_pair},
+    sequence::{delimited, pair, preceded, separated_pair, terminated},
     IResult, Parser,
 };
 
@@ -243,7 +243,7 @@ fn piece(i: &str) -> IResult<&str, Option<Token>> {
 
 /// Parses every alternation of a regex, returning a Vec of Vec<attack strings>.
 /// Each element in the top-level Vec is a different alternation.
-pub fn regex(i: &str) -> IResult<&str, Alternation> {
+fn regex(i: &str) -> IResult<&str, Alternation> {
     map(separated_list0(tag("|"), many0(piece)), |alternations| {
         Alternation(
             alternations
@@ -261,6 +261,10 @@ pub fn regex(i: &str) -> IResult<&str, Alternation> {
                 .collect(),
         )
     })(i)
+}
+
+pub fn regex_parse(i: &str) -> IResult<&str, Alternation> {
+    terminated(regex, eof)(i)
 }
 
 #[cfg(test)]

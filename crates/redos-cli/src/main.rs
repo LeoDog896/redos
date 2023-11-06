@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use clap::{Parser as ClapParser, Subcommand};
 use ignore::WalkBuilder;
 use owo_colors::OwoColorize;
-use redos::parse::regex;
+use redos::parse::regex_parse;
 use redos::vulnerabilities;
 use repo::parse_repository;
 use swc_common::sync::Lrc;
@@ -121,8 +121,8 @@ fn main() {
                 local_scan(all, raw, Some(directory.into_path()));
             }
         },
-        Commands::Ast { regex: regex_source } => {
-            println!("{:#?}", regex(regex_source.as_str()));
+        Commands::Ast { regex } => {
+            println!("{:#?}", regex_parse(regex.as_str()));
         }
     }
 }
