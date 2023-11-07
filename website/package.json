@@ -3,8 +3,9 @@
 	"version": "0.0.1",
 	"private": true,
 	"scripts": {
-		"dev": "vite dev",
-		"build": "vite build",
+		"wasm": "wasm-pack build ../crates/redos",
+		"dev": "pnpm run wasm && vite dev",
+		"build": "pnpm run wasm && vite build",
 		"preview": "vite preview",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
@@ -12,7 +13,7 @@
 		"format": "prettier --plugin-search-dir . --write ."
 	},
 	"devDependencies": {
-		"@sveltejs/adapter-auto": "^2.0.0",
+		"@sveltejs/adapter-static": "^2.0.3",
 		"@sveltejs/kit": "^1.20.4",
 		"@typescript-eslint/eslint-plugin": "^6.0.0",
 		"@typescript-eslint/parser": "^6.0.0",
@@ -25,7 +26,8 @@
 		"svelte-check": "^3.4.3",
 		"tslib": "^2.4.1",
 		"typescript": "^5.0.0",
-		"vite": "^4.4.2"
+		"vite": "^4.4.2",
+		"vite-plugin-wasm-pack": "^0.1.12"
 	},
 	"type": "module"
 }
