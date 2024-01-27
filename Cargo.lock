@@ -1117,6 +1117,7 @@ dependencies = [
 name = "redos-wasm"
 version = "0.1.0"
 dependencies = [
+ "fancy-regex",
  "redos",
  "wasm-bindgen",
 ]
