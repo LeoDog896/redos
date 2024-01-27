@@ -4,4 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+fancy-regex = { git = "https://github.com/LeoDog896/fancy-regex", rev = "edc7c1f" }
 nom = "7.1.3"

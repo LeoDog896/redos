@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 use clap::{Parser as ClapParser, Subcommand};
 use ignore::WalkBuilder;
 use owo_colors::OwoColorize;
-use redos::parse::regex_parse;
 use redos::vulnerabilities;
 use repo::parse_repository;
+use fancy_regex::parse::{Parser as FancyParser};
 use swc_common::sync::Lrc;
 use swc_common::{
     errors::{ColorConfig, Handler},
@@ -122,7 +122,7 @@ fn main() {
             }
         },
         Commands::Ast { regex } => {
-            println!("{:#?}", regex_parse(regex.as_str()));
+            println!("{:#?}", FancyParser::parse(regex.as_str()));
         }
     }
 }
