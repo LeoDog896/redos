@@ -30,6 +30,8 @@ jobs:
           version: 8
       - name: Install dependencies
         run: pnpm install
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
       - name: Build page
         run: pnpm run build
       - name: Upload built project output
