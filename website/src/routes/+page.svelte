@@ -1,6 +1,6 @@
 <script lang="ts">
     // @ts-ignore
-    import init, { parse } from 'redos-wasm';
+    import init, { parse, vulnerabilities } from 'redos-wasm';
 	import { onMount } from 'svelte';
 
     let hasBeenEnabled = false;
@@ -11,9 +11,11 @@
 
     let regex = "";
     let value = "";
+    let vulns = "";
 
     $: if (hasBeenEnabled) {
         value = parse(regex)
+        vulns = vulnerabilities(regex)
     }
 </script>
 
@@ -21,4 +23,8 @@
 
 <pre>
     {value}
+</pre>
+
+<pre>
+    {vulns}
 </pre>

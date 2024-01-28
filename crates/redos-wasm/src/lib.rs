@@ -5,3 +5,8 @@ use fancy_regex::parse::Parser;
 pub fn parse(regex: &str) -> String {
     format!("{:#?}", Parser::parse(regex))
 }
+
+#[wasm_bindgen]
+pub fn vulnerabilities(regex: &str) -> String {
+    format!("{:#?}", redos::vulnerabilities(regex))
+}
