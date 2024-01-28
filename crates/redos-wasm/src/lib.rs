@@ -1,5 +1,5 @@
-use wasm_bindgen::prelude::*;
 use fancy_regex::parse::Parser;
+use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 pub fn parse(regex: &str) -> String {
@@ -8,5 +8,8 @@ pub fn parse(regex: &str) -> String {
 
 #[wasm_bindgen]
 pub fn vulnerabilities(regex: &str) -> String {
-    format!("{:#?}", redos::vulnerabilities(regex, &Default::default()))
+    format!(
+        "{:#?}",
+        redos::vulnerabilities(regex, &Default::default()).map(|r| r.vulnerabilities)
+    )
 }

@@ -14,12 +14,12 @@ clap = { version = "4.4", features = ["derive"] }
 flate2 = "1.0"
 ignore = "0.4"
 nom = "7.1.3"
-owo-colors = "3.5"
+owo-colors = "4.0"
 redos = { path = "../redos" }
 reqwest = { version = "0.11.20", features = ["blocking"] }
-swc_common = { version = "0.32", features = ["tty-emitter"] }
-swc_ecma_ast = "0.109"
-swc_ecma_parser = { version = "0.140.0", features = ["typescript"] }
-swc_ecma_visit = "0.95"
+swc_common = { version = "0.33", features = ["tty-emitter"] }
+swc_ecma_ast = "0.111"
+swc_ecma_parser = { version = "0.142.0", features = ["typescript"] }
+swc_ecma_visit = "0.97"
 tar = "0.4.40"
 tempdir = "0.3.7"

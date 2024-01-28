@@ -4,7 +4,7 @@
 
 If you want to play around with these, [`regex101`](https://regex101.com/) has a great debugging tool to test these out step by step.
 
-For a regex to be vulnerable to ReDoS in general, we first immideately filter for:
+For a regex to be vulnerable to ReDoS in general, we first immediately filter for:
 - Contains an terminal token, so that way the regex doesn't match (forcing the regex to do backtracking)
     - Thus we can immideately scan for regexes that contain a modifier, but don't end with it (e.g. `a+$`)
 

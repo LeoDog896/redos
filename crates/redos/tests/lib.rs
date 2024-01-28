@@ -3,7 +3,12 @@ mod tests {
     use redos::vulnerabilities;
 
     fn assert_safe(regex: &str) {
-        assert_eq!(vulnerabilities(regex, &Default::default()).unwrap(), vec![]);
+        assert_eq!(
+            vulnerabilities(regex, &Default::default())
+                .unwrap()
+                .vulnerabilities,
+            vec![]
+        );
     }
 
     #[test]
