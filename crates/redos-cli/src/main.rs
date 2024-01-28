@@ -8,7 +8,7 @@ use ignore::WalkBuilder;
 use owo_colors::OwoColorize;
 use redos::vulnerabilities;
 use repo::parse_repository;
-use fancy_regex::parse::{Parser as FancyParser};
+use fancy_regex::parse::Parser as FancyParser;
 use swc_common::sync::Lrc;
 use swc_common::{
     errors::{ColorConfig, Handler},
@@ -177,7 +177,7 @@ struct Visitor {
 
 impl Fold for Visitor {
     fn fold_regex(&mut self, regex: Regex) -> Regex {
-        if self.show_all || !vulnerabilities(regex.exp.as_ref()).is_empty() {
+        if self.show_all || !vulnerabilities(regex.exp.as_ref(), &Default::default()).unwrap().is_empty() {
             if self.raw {
                 println!("{}", regex.exp);
             } else {

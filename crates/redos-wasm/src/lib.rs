@@ -8,5 +8,5 @@ pub fn parse(regex: &str) -> String {
 
 #[wasm_bindgen]
 pub fn vulnerabilities(regex: &str) -> String {
-    format!("{:#?}", redos::vulnerabilities(regex))
+    format!("{:#?}", redos::vulnerabilities(regex, &Default::default()))
 }
