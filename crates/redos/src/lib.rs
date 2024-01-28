@@ -1,4 +1,4 @@
-mod ir;
+pub mod ir;
 pub mod vulnerability;
 
 use fancy_regex::parse::Parser;

@@ -3,6 +3,7 @@
 
 use fancy_regex::{parse::ExprTree, Assertion, Expr as RegexExpr, LookAround};
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
     /// An empty expression, e.g. the last branch in `(a|b|)`
     Empty,
@@ -52,6 +53,7 @@ pub enum Expr {
     },
 }
 
+/// Converts a fancy-regex AST to an IR AST
 pub fn to_expr(tree: &ExprTree, expr: &RegexExpr) -> Option<Expr> {
     match expr {
         RegexExpr::Empty => Some(Expr::Empty),

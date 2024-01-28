@@ -1,0 +1,20 @@
+:root {
+    --background: #050401;
+    --foreground: #FFFAFF;
+    --primary: #EA526F;
+    --secondary: #30BCED;
+    --backgroundIsh: #303036;
+}
+
+body, html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: 'JetBrains Mono Variable', sans-serif;
+}
+
+pre, code, input, textarea {
+    font-family: 'JetBrains Mono Variable', sans-serif;
+}
