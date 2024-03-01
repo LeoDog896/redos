@@ -9,7 +9,10 @@ pub fn parse(regex: &str) -> String {
 #[wasm_bindgen]
 pub fn ir(regex: &str) -> String {
     let parser = Parser::parse(regex);
-    format!("{:#?}", parser.map(|tree| redos::ir::to_expr(&tree, &tree.expr)))
+    format!(
+        "{:#?}",
+        parser.map(|tree| redos::ir::to_expr(&tree, &tree.expr))
+    )
 }
 
 #[wasm_bindgen]

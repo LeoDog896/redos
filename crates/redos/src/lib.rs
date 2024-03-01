@@ -14,10 +14,7 @@ use vulnerability::{Vulnerability, VulnerabilityConfig};
 /// - The regex must have a terminating state (to allow for backtracking) (TODO: this is not implemented yet)
 fn repeats_anywhere(expr: &Expr, config: &VulnerabilityConfig) -> bool {
     match expr {
-        Expr::Repeat { lo, hi, .. } => {
-            // if the bound is large, return true
-            return hi - lo > config.max_quantifier;
-        }
+        Expr::Repeat { .. } => true,
 
         // no nested expressions
         Expr::Empty => false,
@@ -63,7 +60,8 @@ pub fn vulnerabilities(regex: &str, config: &VulnerabilityConfig) -> Result<Vuln
     let tree = Parser::parse(regex)?;
 
     // second pass: turn AST into IR
-    let expr = to_expr(&tree, &tree.expr).expect("Failed to convert AST to IR; this is a bug");
+    let expr =
+        to_expr(&tree, &tree.expr, config).expect("Failed to convert AST to IR; this is a bug");
 
     // third pass: exit early if there are no repeats
     if !repeats_anywhere(&expr, config) {

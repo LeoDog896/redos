@@ -3,6 +3,8 @@
 
 use fancy_regex::{parse::ExprTree, Assertion, Expr as RegexExpr, LookAround};
 
+use crate::vulnerability::VulnerabilityConfig;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
     /// An empty expression, e.g. the last branch in `(a|b|)`
@@ -27,10 +29,6 @@ pub enum Expr {
     Repeat {
         /// The expression that is being repeated
         child: Box<Expr>,
-        /// The minimum number of repetitions
-        lo: usize,
-        /// The maximum number of repetitions (or `usize::MAX`)
-        hi: usize,
         /// Greedy means as much as possible is matched, e.g. `.*b` would match all of `abab`.
         /// Non-greedy means as little as possible, e.g. `.*?b` would match only `ab` in `abab`.
         greedy: bool,
@@ -54,7 +52,7 @@ pub enum Expr {
 }
 
 /// Converts a fancy-regex AST to an IR AST
-pub fn to_expr(tree: &ExprTree, expr: &RegexExpr) -> Option<Expr> {
+pub fn to_expr(tree: &ExprTree, expr: &RegexExpr, config: &VulnerabilityConfig) -> Option<Expr> {
     match expr {
         RegexExpr::Empty => Some(Expr::Empty),
         RegexExpr::Any { .. } => Some(Expr::Token),
@@ -62,38 +60,46 @@ pub fn to_expr(tree: &ExprTree, expr: &RegexExpr) -> Option<Expr> {
         RegexExpr::Literal { .. } => Some(Expr::Token),
         RegexExpr::Concat(list) => Some(Expr::Concat(
             list.iter()
-                .map(|e| to_expr(tree, e))
+                .map(|e| to_expr(tree, e, config))
                 .filter_map(|e| e)
                 .collect(),
         )),
         RegexExpr::Alt(list) => Some(Expr::Alt(
             list.iter()
-                .map(|e| to_expr(tree, e))
+                .map(|e| to_expr(tree, e, config))
                 .filter_map(|e| e)
                 .collect(),
         )),
-        RegexExpr::Group(e) => to_expr(tree, e).map(|e| Expr::Group(Box::new(e))),
+        RegexExpr::Group(e) => to_expr(tree, e, config).map(|e| Expr::Group(Box::new(e))),
         RegexExpr::LookAround(e, la) => {
-            to_expr(tree, e).map(|e| Expr::LookAround(Box::new(e), *la))
+            to_expr(tree, e, config).map(|e| Expr::LookAround(Box::new(e), *la))
         }
         RegexExpr::Repeat {
             child,
             lo,
             hi,
             greedy,
-        } => to_expr(tree, child).map(|child| Expr::Repeat {
-            child: Box::new(child),
-            lo: *lo,
-            hi: *hi,
-            greedy: *greedy,
-        }),
+        } => {
+            let range = hi - lo;
+
+            if range > config.max_quantifier {
+                to_expr(tree, child, config).map(|child| Expr::Repeat {
+                    child: Box::new(child),
+                    greedy: *greedy,
+                })
+            } else {
+                to_expr(tree, child, config)
+            }
+        }
         // Delegates essentially forcibly match some string, so we can turn them into a token
         RegexExpr::Delegate { .. } => Some(Expr::Token),
         // note that since we convert backrefs to tokens, the complexity of a vulnerability
         // may underestimate the actual complexity, though this will not cause
         // false negatives
         RegexExpr::Backref(_) => Some(Expr::Token),
-        RegexExpr::AtomicGroup(e) => to_expr(tree, e).map(|e| Expr::AtomicGroup(Box::new(e))),
+        RegexExpr::AtomicGroup(e) => {
+            to_expr(tree, e, config).map(|e| Expr::AtomicGroup(Box::new(e)))
+        }
         RegexExpr::KeepOut => None,
         RegexExpr::ContinueFromPreviousMatchEnd => Some(Expr::ContinueFromPreviousMatchEnd),
         RegexExpr::BackrefExistsCondition(i) => Some(Expr::BackrefExistsCondition(*i)),
@@ -102,9 +108,9 @@ pub fn to_expr(tree: &ExprTree, expr: &RegexExpr) -> Option<Expr> {
             true_branch,
             false_branch,
         } => {
-            let condition = to_expr(tree, condition);
-            let true_branch = to_expr(tree, true_branch);
-            let false_branch = to_expr(tree, false_branch);
+            let condition = to_expr(tree, condition, config);
+            let true_branch = to_expr(tree, true_branch, config);
+            let false_branch = to_expr(tree, false_branch, config);
             if let (Some(condition), Some(true_branch), Some(false_branch)) =
                 (condition, true_branch, false_branch)
             {
