@@ -29,6 +29,7 @@ fn repeats_anywhere(expr: &Expr, config: &VulnerabilityConfig) -> bool {
         Expr::Group(e) => repeats_anywhere(e.as_ref(), config),
         Expr::LookAround(e, _) => repeats_anywhere(e.as_ref(), config),
         Expr::AtomicGroup(e) => repeats_anywhere(e.as_ref(), config),
+        Expr::Optional(e) => repeats_anywhere(e.as_ref(), config),
         Expr::Conditional {
             condition,
             true_branch,
