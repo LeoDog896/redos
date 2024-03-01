@@ -33,6 +33,8 @@ pub enum Expr {
         /// Non-greedy means as little as possible, e.g. `.*?b` would match only `ab` in `abab`.
         greedy: bool,
     },
+    /// Optional expression, e.g. `a?` means `a` is optional
+    Optional(Box<Expr>),
     /// Atomic non-capturing group, e.g. `(?>ab|a)` in text that contains `ab` will match `ab` and
     /// never backtrack and try `a`, even if matching fails after the atomic group.
     AtomicGroup(Box<Expr>),
@@ -82,13 +84,19 @@ pub fn to_expr(tree: &ExprTree, expr: &RegexExpr, config: &VulnerabilityConfig) 
         } => {
             let range = hi - lo;
 
-            if range > config.max_quantifier {
+            let expression = if range > config.max_quantifier {
                 to_expr(tree, child, config).map(|child| Expr::Repeat {
                     child: Box::new(child),
                     greedy: *greedy,
                 })
             } else {
                 to_expr(tree, child, config)
+            };
+
+            if *lo == 0 {
+                expression.map(|e| Expr::Optional(Box::new(e)))
+            } else {
+                expression
             }
         }
         // Delegates essentially forcibly match some string, so we can turn them into a token
