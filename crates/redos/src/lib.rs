@@ -1,9 +1,11 @@
 pub mod ir;
 pub mod vulnerability;
 
+mod ilq;
+
 use fancy_regex::parse::Parser;
-use fancy_regex::Result;
-use ir::{to_expr, Expr};
+use fancy_regex::{Result, Expr as RegexExpr};
+use ir::{to_expr, Expr, ExprConditional};
 use vulnerability::{Vulnerability, VulnerabilityConfig};
 
 /// Returns true iif repeats are present anywhere in the regex
@@ -17,11 +19,8 @@ fn repeats_anywhere(expr: &Expr, config: &VulnerabilityConfig) -> bool {
         Expr::Repeat { .. } => true,
 
         // no nested expressions
-        Expr::Empty => false,
         Expr::Token => false,
         Expr::Assertion(_) => false,
-        Expr::ContinueFromPreviousMatchEnd => false,
-        Expr::BackrefExistsCondition(_) => false,
 
         // propagate
         Expr::Concat(list) => list.iter().any(|e| repeats_anywhere(e, config)),
@@ -35,9 +34,12 @@ fn repeats_anywhere(expr: &Expr, config: &VulnerabilityConfig) -> bool {
             true_branch,
             false_branch,
         } => {
-            repeats_anywhere(condition.as_ref(), config)
-                || repeats_anywhere(true_branch.as_ref(), config)
-                || repeats_anywhere(false_branch.as_ref(), config)
+            match condition {
+                ExprConditional::BackrefExistsCondition(_) => false,
+                ExprConditional::Condition(condition) => repeats_anywhere(condition.as_ref(), config)
+                    || repeats_anywhere(true_branch.as_ref(), config)
+                    || repeats_anywhere(false_branch.as_ref(), config)
+            }
         }
     }
 }
@@ -60,6 +62,13 @@ pub fn vulnerabilities(regex: &str, config: &VulnerabilityConfig) -> Result<Vuln
     // first pass: parse the regex
     let tree = Parser::parse(regex)?;
 
+    if tree.expr == RegexExpr::Empty {
+        return Ok(VulnerabilityResult {
+            vulnerabilities: vec![],
+            dfa: can_be_dfa,
+        });
+    }
+
     // second pass: turn AST into IR
     let expr =
         to_expr(&tree, &tree.expr, config).expect("Failed to convert AST to IR; this is a bug");
@@ -74,7 +83,7 @@ pub fn vulnerabilities(regex: &str, config: &VulnerabilityConfig) -> Result<Vuln
 
     // TODO: this is a fake placeholder
     Ok(VulnerabilityResult {
-        vulnerabilities: vec![Vulnerability::ExponentialOverlappingDisjunction],
+        vulnerabilities: vec![Vulnerability::InitialQuantifier],
         dfa: can_be_dfa,
     })
 }

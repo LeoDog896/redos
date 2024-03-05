@@ -6,9 +6,13 @@ use fancy_regex::{parse::ExprTree, Assertion, Expr as RegexExpr, LookAround};
 use crate::vulnerability::VulnerabilityConfig;
 
 #[derive(Debug, PartialEq, Eq)]
+pub enum ExprConditional {
+    Condition(Box<Expr>),
+    BackrefExistsCondition(usize),
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
-    /// An empty expression, e.g. the last branch in `(a|b|)`
-    Empty,
     /// Some token, whether its a character class, any character, etc.
     Token,
     /// An assertion
@@ -38,14 +42,10 @@ pub enum Expr {
     /// Atomic non-capturing group, e.g. `(?>ab|a)` in text that contains `ab` will match `ab` and
     /// never backtrack and try `a`, even if matching fails after the atomic group.
     AtomicGroup(Box<Expr>),
-    /// Anchor to match at the position where the previous match ended
-    ContinueFromPreviousMatchEnd,
-    /// Conditional expression based on whether the numbered capture group matched or not
-    BackrefExistsCondition(usize),
     /// If/Then/Else Condition. If there is no Then/Else, these will just be empty expressions.
     Conditional {
         /// The conditional expression to evaluate
-        condition: Box<Expr>,
+        condition: ExprConditional,
         /// What to execute if the condition is true
         true_branch: Box<Expr>,
         /// What to execute if the condition is false
@@ -56,7 +56,7 @@ pub enum Expr {
 /// Converts a fancy-regex AST to an IR AST
 pub fn to_expr(tree: &ExprTree, expr: &RegexExpr, config: &VulnerabilityConfig) -> Option<Expr> {
     match expr {
-        RegexExpr::Empty => Some(Expr::Empty),
+        RegexExpr::Empty => None,
         RegexExpr::Any { .. } => Some(Expr::Token),
         RegexExpr::Assertion(a) => Some(Expr::Assertion(*a)),
         RegexExpr::Literal { .. } => Some(Expr::Token),
@@ -109,21 +109,25 @@ pub fn to_expr(tree: &ExprTree, expr: &RegexExpr, config: &VulnerabilityConfig) 
             to_expr(tree, e, config).map(|e| Expr::AtomicGroup(Box::new(e)))
         }
         RegexExpr::KeepOut => None,
-        RegexExpr::ContinueFromPreviousMatchEnd => Some(Expr::ContinueFromPreviousMatchEnd),
-        RegexExpr::BackrefExistsCondition(i) => Some(Expr::BackrefExistsCondition(*i)),
+        RegexExpr::ContinueFromPreviousMatchEnd => None,
+        RegexExpr::BackrefExistsCondition(_) => None,
         RegexExpr::Conditional {
             condition,
             true_branch,
             false_branch,
         } => {
-            let condition = to_expr(tree, condition, config);
             let true_branch = to_expr(tree, true_branch, config);
             let false_branch = to_expr(tree, false_branch, config);
-            if let (Some(condition), Some(true_branch), Some(false_branch)) =
-                (condition, true_branch, false_branch)
+            if let (Some(true_branch), Some(false_branch)) =
+                (true_branch, false_branch)
             {
-                Some(Expr::Conditional {
-                    condition: Box::new(condition),
+                let condition: Option<ExprConditional> = match condition.as_ref() {
+                    &RegexExpr::BackrefExistsCondition(number) => Some(ExprConditional::BackrefExistsCondition(number)),
+                    expr => to_expr(tree, expr, config).map(|x| ExprConditional::Condition(Box::new(x)))
+                };
+
+                condition.map(|condition| Expr::Conditional {
+                    condition,
                     true_branch: Box::new(true_branch),
                     false_branch: Box::new(false_branch),
                 })
