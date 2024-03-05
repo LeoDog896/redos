@@ -1,24 +1,21 @@
+mod languages;
 mod repo;
 
-use core::panic;
 use std::path::{Path, PathBuf};
 
 use clap::{Parser as ClapParser, Subcommand};
 use fancy_regex::parse::Parser as FancyParser;
 use ignore::WalkBuilder;
+use languages::{
+    javascript::JavaScript,
+    language::{Language, Location},
+};
 use owo_colors::OwoColorize;
 use redos::vulnerabilities;
 use repo::parse_repository;
-use swc_common::sync::Lrc;
-use swc_common::{
-    errors::{ColorConfig, Handler},
-    SourceMap,
-};
-use swc_ecma_ast::{EsVersion, Regex};
-use swc_ecma_parser::TsConfig;
-use swc_ecma_parser::{lexer::Lexer, Parser, StringInput, Syntax};
-use swc_ecma_visit::{fold_module_item, Fold};
 use tempdir::TempDir;
+
+use anyhow::Result;
 
 use crate::repo::download_repository;
 
@@ -71,10 +68,16 @@ enum ScanCommand {
     },
 }
 
-/// List of scanned extensions
-const EXTENSIONS: [&str; 8] = ["js", "jsx", "ts", "tsx", "mjs", "cjs", "mts", "cts"];
+fn print_regex(regex: &str, location: Location, raw: bool, path: &Path) {
+    if raw {
+        println!("{}", regex);
+    } else {
+        println!("{}:{}", path.to_str().unwrap(), location);
+        println!("  {}", regex.red());
+    }
+}
 
-fn local_scan(all: bool, raw: bool, directory: Option<PathBuf>) {
+async fn local_scan(all: bool, raw: bool, directory: Option<PathBuf>) -> Result<()> {
     let walk = WalkBuilder::new(directory.unwrap_or_else(|| ".".into())).build();
 
     for entry in walk {
@@ -83,16 +86,27 @@ fn local_scan(all: bool, raw: bool, directory: Option<PathBuf>) {
         if entry.file_type().unwrap().is_file() {
             let path = entry.path();
 
-            if let Some(extension) = path.extension() {
-                if EXTENSIONS.contains(&extension.to_str().unwrap()) {
-                    check_file(path, raw, all);
+            let regexes = JavaScript::check_file(path).await?;
+
+            if let Some(regexes) = regexes {
+                for regex in regexes {
+                    if all
+                        || !vulnerabilities(&regex.0, &Default::default())?
+                            .vulnerabilities
+                            .is_empty()
+                    {
+                        print_regex(&regex.0, regex.1, raw, path);
+                    }
                 }
             }
         }
     }
+
+    Ok(())
 }
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<()> {
     let args = Cli::parse();
     match args.command {
         Commands::Scan { command } => match command {
@@ -103,7 +117,7 @@ fn main() {
                 exclude: _,
                 raw,
             } => {
-                local_scan(all, raw, directory);
+                local_scan(all, raw, directory).await?;
             }
             ScanCommand::Git {
                 repository,
@@ -118,78 +132,13 @@ fn main() {
                     directory.path().to_str().unwrap()
                 );
 
-                local_scan(all, raw, Some(directory.into_path()));
+                local_scan(all, raw, Some(directory.into_path())).await?;
             }
         },
         Commands::Ast { regex } => {
             println!("{:#?}", FancyParser::parse(regex.as_str()));
         }
     }
-}
 
-fn check_file(path: &Path, raw: bool, show_all: bool) {
-    let cm: Lrc<SourceMap> = Default::default();
-    let handler = Handler::with_tty_emitter(ColorConfig::Auto, true, false, Some(cm.clone()));
-
-    let fm = cm
-        .load_file(path)
-        .unwrap_or_else(|e| panic!("failed to load file: {}", e));
-
-    let lexer = Lexer::new(
-        Syntax::Typescript(TsConfig {
-            tsx: true,
-            decorators: true,
-            dts: false,
-            no_early_errors: true,
-            disallow_ambiguous_jsx_like: false,
-        }),
-        EsVersion::latest(),
-        StringInput::from(&*fm),
-        None,
-    );
-
-    let mut parser = Parser::new_from(lexer);
-
-    let module = parser.parse_module().map_err(|e| {
-        // Unrecoverable fatal error occurred
-        e.into_diagnostic(&handler).emit();
-    });
-
-    if let Ok(module) = module {
-        for token in module.body {
-            fold_module_item(
-                &mut Visitor {
-                    show_all,
-                    raw,
-                    path: path.into(),
-                },
-                token,
-            );
-        }
-    }
-}
-
-struct Visitor {
-    show_all: bool,
-    path: PathBuf,
-    raw: bool,
-}
-
-impl Fold for Visitor {
-    fn fold_regex(&mut self, regex: Regex) -> Regex {
-        if self.show_all
-            || !vulnerabilities(regex.exp.as_ref(), &Default::default())
-                .unwrap()
-                .vulnerabilities
-                .is_empty()
-        {
-            if self.raw {
-                println!("{}", regex.exp);
-            } else {
-                println!("{}:{}", self.path.to_str().unwrap(), regex.span.lo.0);
-                println!("  {}", regex.exp.red());
-            }
-        }
-        regex
-    }
+    Ok(())
 }

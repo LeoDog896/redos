@@ -14,7 +14,7 @@ use vulnerability::{Vulnerability, VulnerabilityConfig};
 /// - It must contain a repeat
 /// - The repeat must have a bound size greater than `config.max_quantifier`
 /// - The regex must have a terminating state (to allow for backtracking) (TODO: this is not implemented yet)
-fn repeats_anywhere(expr: &Expr, config: &VulnerabilityConfig) -> bool {
+fn repeats_anywhere(expr: &Expr) -> bool {
     match expr {
         Expr::Repeat { .. } => true,
 
@@ -23,12 +23,12 @@ fn repeats_anywhere(expr: &Expr, config: &VulnerabilityConfig) -> bool {
         Expr::Assertion(_) => false,
 
         // propagate
-        Expr::Concat(list) => list.iter().any(|e| repeats_anywhere(e, config)),
-        Expr::Alt(list) => list.iter().any(|e| repeats_anywhere(e, config)),
-        Expr::Group(e) => repeats_anywhere(e.as_ref(), config),
-        Expr::LookAround(e, _) => repeats_anywhere(e.as_ref(), config),
-        Expr::AtomicGroup(e) => repeats_anywhere(e.as_ref(), config),
-        Expr::Optional(e) => repeats_anywhere(e.as_ref(), config),
+        Expr::Concat(list) => list.iter().any(repeats_anywhere),
+        Expr::Alt(list) => list.iter().any(repeats_anywhere),
+        Expr::Group(e) => repeats_anywhere(e.as_ref()),
+        Expr::LookAround(e, _) => repeats_anywhere(e.as_ref()),
+        Expr::AtomicGroup(e) => repeats_anywhere(e.as_ref()),
+        Expr::Optional(e) => repeats_anywhere(e.as_ref()),
         Expr::Conditional {
             condition,
             true_branch,
@@ -36,9 +36,9 @@ fn repeats_anywhere(expr: &Expr, config: &VulnerabilityConfig) -> bool {
         } => {
             match condition {
                 ExprConditional::BackrefExistsCondition(_) => false,
-                ExprConditional::Condition(condition) => repeats_anywhere(condition.as_ref(), config)
-                    || repeats_anywhere(true_branch.as_ref(), config)
-                    || repeats_anywhere(false_branch.as_ref(), config)
+                ExprConditional::Condition(condition) => repeats_anywhere(condition.as_ref())
+                    || repeats_anywhere(true_branch.as_ref())
+                    || repeats_anywhere(false_branch.as_ref())
             }
         }
     }
@@ -71,10 +71,10 @@ pub fn vulnerabilities(regex: &str, config: &VulnerabilityConfig) -> Result<Vuln
 
     // second pass: turn AST into IR
     let expr =
-        to_expr(&tree, &tree.expr, config).expect("Failed to convert AST to IR; this is a bug");
+        to_expr(&tree.expr, config).expect("Failed to convert AST to IR; this is a bug");
 
     // third pass: exit early if there are no repeats
-    if !repeats_anywhere(&expr, config) {
+    if !repeats_anywhere(&expr) {
         return Ok(VulnerabilityResult {
             vulnerabilities: vec![],
             dfa: can_be_dfa,

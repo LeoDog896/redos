@@ -1,7 +1,7 @@
 //! Immediate representation of a regular expression.
 //! Used to simplify the AST and make it easier to work with.
 
-use fancy_regex::{parse::ExprTree, Assertion, Expr as RegexExpr, LookAround};
+use fancy_regex::{Assertion, Expr as RegexExpr, LookAround};
 
 use crate::vulnerability::VulnerabilityConfig;
 
@@ -54,7 +54,7 @@ pub enum Expr {
 }
 
 /// Converts a fancy-regex AST to an IR AST
-pub fn to_expr(tree: &ExprTree, expr: &RegexExpr, config: &VulnerabilityConfig) -> Option<Expr> {
+pub fn to_expr(expr: &RegexExpr, config: &VulnerabilityConfig) -> Option<Expr> {
     match expr {
         RegexExpr::Empty => None,
         RegexExpr::Any { .. } => Some(Expr::Token),
@@ -62,19 +62,17 @@ pub fn to_expr(tree: &ExprTree, expr: &RegexExpr, config: &VulnerabilityConfig) 
         RegexExpr::Literal { .. } => Some(Expr::Token),
         RegexExpr::Concat(list) => Some(Expr::Concat(
             list.iter()
-                .map(|e| to_expr(tree, e, config))
-                .filter_map(|e| e)
+                .filter_map(|e| to_expr(e, config))
                 .collect(),
         )),
         RegexExpr::Alt(list) => Some(Expr::Alt(
             list.iter()
-                .map(|e| to_expr(tree, e, config))
-                .filter_map(|e| e)
+                .filter_map(|e| to_expr(e, config))
                 .collect(),
         )),
-        RegexExpr::Group(e) => to_expr(tree, e, config).map(|e| Expr::Group(Box::new(e))),
+        RegexExpr::Group(e) => to_expr(e, config).map(|e| Expr::Group(Box::new(e))),
         RegexExpr::LookAround(e, la) => {
-            to_expr(tree, e, config).map(|e| Expr::LookAround(Box::new(e), *la))
+            to_expr(e, config).map(|e| Expr::LookAround(Box::new(e), *la))
         }
         RegexExpr::Repeat {
             child,
@@ -85,12 +83,12 @@ pub fn to_expr(tree: &ExprTree, expr: &RegexExpr, config: &VulnerabilityConfig) 
             let range = hi - lo;
 
             let expression = if range > config.max_quantifier {
-                to_expr(tree, child, config).map(|child| Expr::Repeat {
+                to_expr(child, config).map(|child| Expr::Repeat {
                     child: Box::new(child),
                     greedy: *greedy,
                 })
             } else {
-                to_expr(tree, child, config)
+                to_expr(child, config)
             };
 
             if *lo == 0 {
@@ -106,7 +104,7 @@ pub fn to_expr(tree: &ExprTree, expr: &RegexExpr, config: &VulnerabilityConfig) 
         // false negatives
         RegexExpr::Backref(_) => Some(Expr::Token),
         RegexExpr::AtomicGroup(e) => {
-            to_expr(tree, e, config).map(|e| Expr::AtomicGroup(Box::new(e)))
+            to_expr(e, config).map(|e| Expr::AtomicGroup(Box::new(e)))
         }
         RegexExpr::KeepOut => None,
         RegexExpr::ContinueFromPreviousMatchEnd => None,
@@ -116,14 +114,14 @@ pub fn to_expr(tree: &ExprTree, expr: &RegexExpr, config: &VulnerabilityConfig) 
             true_branch,
             false_branch,
         } => {
-            let true_branch = to_expr(tree, true_branch, config);
-            let false_branch = to_expr(tree, false_branch, config);
+            let true_branch = to_expr(true_branch, config);
+            let false_branch = to_expr(false_branch, config);
             if let (Some(true_branch), Some(false_branch)) =
                 (true_branch, false_branch)
             {
                 let condition: Option<ExprConditional> = match condition.as_ref() {
                     &RegexExpr::BackrefExistsCondition(number) => Some(ExprConditional::BackrefExistsCondition(number)),
-                    expr => to_expr(tree, expr, config).map(|x| ExprConditional::Condition(Box::new(x)))
+                    expr => to_expr(expr, config).map(|x| ExprConditional::Condition(Box::new(x)))
                 };
 
                 condition.map(|condition| Expr::Conditional {

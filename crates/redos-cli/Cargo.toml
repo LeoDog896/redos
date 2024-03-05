@@ -18,8 +18,10 @@ owo-colors = "4.0"
 redos = { path = "../redos" }
 reqwest = { version = "0.11.20", features = ["blocking"] }
 swc_common = { version = "0.33", features = ["tty-emitter"] }
-swc_ecma_ast = "0.111"
-swc_ecma_parser = { version = "0.142.0", features = ["typescript"] }
-swc_ecma_visit = "0.97"
+swc_ecma_ast = "0.112"
+swc_ecma_parser = { version = "0.143", features = ["typescript"] }
+swc_ecma_visit = "0.98"
 tar = "0.4.40"
 tempdir = "0.3.7"
+tokio = { version = "1.36.0", features = ["full"] }
+async-trait = "0.1.77"
