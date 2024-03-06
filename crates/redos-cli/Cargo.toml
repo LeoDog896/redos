@@ -9,6 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 fancy-regex = { git = "https://github.com/LeoDog896/fancy-regex", rev = "edc7c1f" }
+ruff_python_parser = { git = "https://github.com/astral-sh/ruff", rev = "af6ea2f" }
 anyhow = "1.0"
 clap = { version = "4.4", features = ["derive"] }
 flate2 = "1.0"

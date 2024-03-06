@@ -1,6 +1,8 @@
 //! Immediate representation of a regular expression.
 //! Used to simplify the AST and make it easier to work with.
 
+use std::num::NonZeroUsize;
+
 use fancy_regex::{Assertion, Expr as RegexExpr, LookAround};
 
 use crate::vulnerability::VulnerabilityConfig;
@@ -25,7 +27,9 @@ pub enum Expr {
     Alt(Vec<Expr>),
     /// Capturing group of expression, e.g. `(a.)` matches `a` and any character and "captures"
     /// (remembers) the match
-    Group(Box<Expr>),
+    ///
+    /// The usize is the number of the capturing group, starting from 1
+    Group(Box<Expr>, usize),
     /// Look-around (e.g. positive/negative look-ahead or look-behind) with an expression, e.g.
     /// `(?=a)` means the next character must be `a` (but the match is not consumed)
     LookAround(Box<Expr>, LookAround),
@@ -54,25 +58,37 @@ pub enum Expr {
 }
 
 /// Converts a fancy-regex AST to an IR AST
-pub fn to_expr(expr: &RegexExpr, config: &VulnerabilityConfig) -> Option<Expr> {
+pub fn to_expr(
+    expr: &RegexExpr,
+    config: &VulnerabilityConfig,
+    group_increment: NonZeroUsize,
+) -> Option<Expr> {
     match expr {
         RegexExpr::Empty => None,
         RegexExpr::Any { .. } => Some(Expr::Token),
         RegexExpr::Assertion(a) => Some(Expr::Assertion(*a)),
         RegexExpr::Literal { .. } => Some(Expr::Token),
+        // TODO: propagate group increment
         RegexExpr::Concat(list) => Some(Expr::Concat(
             list.iter()
-                .filter_map(|e| to_expr(e, config))
+                .filter_map(|e| to_expr(e, config, group_increment))
                 .collect(),
         )),
         RegexExpr::Alt(list) => Some(Expr::Alt(
             list.iter()
-                .filter_map(|e| to_expr(e, config))
+                .filter_map(|e| to_expr(e, config, group_increment))
                 .collect(),
         )),
-        RegexExpr::Group(e) => to_expr(e, config).map(|e| Expr::Group(Box::new(e))),
+        RegexExpr::Group(e) => to_expr(
+            e,
+            config,
+            group_increment
+                .checked_add(1)
+                .expect("group increment overflow"),
+        )
+        .map(|e| Expr::Group(Box::new(e), group_increment.into())),
         RegexExpr::LookAround(e, la) => {
-            to_expr(e, config).map(|e| Expr::LookAround(Box::new(e), *la))
+            to_expr(e, config, group_increment).map(|e| Expr::LookAround(Box::new(e), *la))
         }
         RegexExpr::Repeat {
             child,
@@ -83,12 +99,12 @@ pub fn to_expr(expr: &RegexExpr, config: &VulnerabilityConfig) -> Option<Expr> {
             let range = hi - lo;
 
             let expression = if range > config.max_quantifier {
-                to_expr(child, config).map(|child| Expr::Repeat {
+                to_expr(child, config, group_increment).map(|child| Expr::Repeat {
                     child: Box::new(child),
                     greedy: *greedy,
                 })
             } else {
-                to_expr(child, config)
+                to_expr(child, config, group_increment)
             };
 
             if *lo == 0 {
@@ -104,7 +120,7 @@ pub fn to_expr(expr: &RegexExpr, config: &VulnerabilityConfig) -> Option<Expr> {
         // false negatives
         RegexExpr::Backref(_) => Some(Expr::Token),
         RegexExpr::AtomicGroup(e) => {
-            to_expr(e, config).map(|e| Expr::AtomicGroup(Box::new(e)))
+            to_expr(e, config, group_increment).map(|e| Expr::AtomicGroup(Box::new(e)))
         }
         RegexExpr::KeepOut => None,
         RegexExpr::ContinueFromPreviousMatchEnd => None,
@@ -114,14 +130,15 @@ pub fn to_expr(expr: &RegexExpr, config: &VulnerabilityConfig) -> Option<Expr> {
             true_branch,
             false_branch,
         } => {
-            let true_branch = to_expr(true_branch, config);
-            let false_branch = to_expr(false_branch, config);
-            if let (Some(true_branch), Some(false_branch)) =
-                (true_branch, false_branch)
-            {
+            let true_branch = to_expr(true_branch, config, group_increment);
+            let false_branch = to_expr(false_branch, config, group_increment);
+            if let (Some(true_branch), Some(false_branch)) = (true_branch, false_branch) {
                 let condition: Option<ExprConditional> = match condition.as_ref() {
-                    &RegexExpr::BackrefExistsCondition(number) => Some(ExprConditional::BackrefExistsCondition(number)),
-                    expr => to_expr(expr, config).map(|x| ExprConditional::Condition(Box::new(x)))
+                    &RegexExpr::BackrefExistsCondition(number) => {
+                        Some(ExprConditional::BackrefExistsCondition(number))
+                    }
+                    expr => to_expr(expr, config, group_increment)
+                        .map(|x| ExprConditional::Condition(Box::new(x))),
                 };
 
                 condition.map(|condition| Expr::Conditional {

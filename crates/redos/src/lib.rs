@@ -4,7 +4,7 @@ pub mod vulnerability;
 mod ilq;
 
 use fancy_regex::parse::Parser;
-use fancy_regex::{Result, Expr as RegexExpr};
+use fancy_regex::{Expr as RegexExpr, Result};
 use ir::{to_expr, Expr, ExprConditional};
 use vulnerability::{Vulnerability, VulnerabilityConfig};
 
@@ -25,7 +25,7 @@ fn repeats_anywhere(expr: &Expr) -> bool {
         // propagate
         Expr::Concat(list) => list.iter().any(repeats_anywhere),
         Expr::Alt(list) => list.iter().any(repeats_anywhere),
-        Expr::Group(e) => repeats_anywhere(e.as_ref()),
+        Expr::Group(e, _) => repeats_anywhere(e.as_ref()),
         Expr::LookAround(e, _) => repeats_anywhere(e.as_ref()),
         Expr::AtomicGroup(e) => repeats_anywhere(e.as_ref()),
         Expr::Optional(e) => repeats_anywhere(e.as_ref()),
@@ -33,14 +33,14 @@ fn repeats_anywhere(expr: &Expr) -> bool {
             condition,
             true_branch,
             false_branch,
-        } => {
-            match condition {
-                ExprConditional::BackrefExistsCondition(_) => false,
-                ExprConditional::Condition(condition) => repeats_anywhere(condition.as_ref())
+        } => match condition {
+            ExprConditional::BackrefExistsCondition(_) => false,
+            ExprConditional::Condition(condition) => {
+                repeats_anywhere(condition.as_ref())
                     || repeats_anywhere(true_branch.as_ref())
                     || repeats_anywhere(false_branch.as_ref())
             }
-        }
+        },
     }
 }
 
@@ -70,8 +70,8 @@ pub fn vulnerabilities(regex: &str, config: &VulnerabilityConfig) -> Result<Vuln
     }
 
     // second pass: turn AST into IR
-    let expr =
-        to_expr(&tree.expr, config).expect("Failed to convert AST to IR; this is a bug");
+    let expr = to_expr(&tree.expr, config, nonzero_lit::usize!(1))
+        .expect("Failed to convert AST to IR; this is a bug");
 
     // third pass: exit early if there are no repeats
     if !repeats_anywhere(&expr) {
