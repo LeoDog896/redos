@@ -123,7 +123,7 @@ pub fn to_expr(
             let range = hi - lo;
 
             let expression = to_expr(child, config, group_increment);
-            let expression = if range > config.max_quantifier {
+            let expression = if range > config.four_max_quantifier {
                 expression.map(|child| Expr::Repeat(Box::new(child)))
             } else {
                 expression

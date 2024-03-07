@@ -1,0 +1,30 @@
+base example
+        abc
+lets try out groups
+        (abc|def)|[nhi]?
+tiny repeating string
+        a{1,10}
+bigger repeated string that's just right
+        a{}
+nested group
+        (((a)))
+try putting some quantifiers outside
+        ((a+)+)+
+are optionals detected?
+        (a?)+
+lets try lookarounds
+        (?<=a)
+        (?<!a)
+        (?!a)
+        (?=a)
+        (?>a)
+        (?>a+)
+can we decompose alternations?
+        (a+)|(b+)|(((a)))
+how about alternations in lookarounds?
+        (?<=a|b)
+        (?<!a|b)
+        (?!a|b)
+        (?=a|b)
+        (?>a|b)
+        (?>a+|b+)

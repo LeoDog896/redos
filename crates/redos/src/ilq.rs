@@ -46,10 +46,11 @@ pub fn scan_ilq(expr: &Expr) -> IlqReturn {
         // luckily, we can just pretend as if the child is the root of its own tree
         Expr::Repeat(e) => scan_ilq(e),
 
+        // TODO: proper support for lookarounds
         Expr::LookAround(e, _) => scan_ilq(e),
 
-        // TODO: atomic groups and lookarounds
-        _ => IlqReturn::new(true),
+        // TODO: proper support for atomic groups
+        Expr::AtomicGroup(e) => scan_ilq(e),
     }
 }
 

@@ -34,7 +34,7 @@ impl RegexInfo {
 ///
 /// A regex must meet the following criteria to be even considered to be vulnerable:
 /// - It must contain a repeat
-/// - The repeat must have a bound size greater than `config.max_quantifier`
+/// - The repeat must have a bound size greater than `config.second_max_quantifier`
 /// - The regex must have a terminating state (to allow for backtracking) (TODO: this is not implemented yet)
 fn regex_pre_scan(expr: &Expr) -> RegexInfo {
     match expr {
