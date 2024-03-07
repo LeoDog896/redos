@@ -1,4 +1,4 @@
-//! Immediate representation of a regular expression.
+//! Intermediate representation of a regular expression.
 //! Used to simplify the AST and make it easier to work with.
 
 use std::num::NonZeroUsize;
@@ -10,13 +10,9 @@ use crate::vulnerability::VulnerabilityConfig;
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum IrAssertion {
     /// Start of input text
-    StartText,
+    Start,
     /// End of input text
-    EndText,
-    /// Start of a line
-    StartLine,
-    /// End of a line
-    EndLine,
+    End,
     /// Left word boundary
     LeftWordBoundary,
     /// Right word boundary
@@ -84,10 +80,13 @@ pub fn to_expr(
         RegexExpr::Any { .. } => Some(Expr::Token),
         RegexExpr::Assertion(a) => Some(Expr::Assertion(
             match a {
-                Assertion::StartText => IrAssertion::StartText,
-                Assertion::EndText => IrAssertion::EndText,
-                Assertion::StartLine { .. } => IrAssertion::StartLine,
-                Assertion::EndLine { .. } => IrAssertion::EndLine,
+                // Since start and line only depend on the multiline flag,
+                // they don't particurally matter for ReDoS detection.
+                Assertion::StartText => IrAssertion::Start,
+                Assertion::EndText => IrAssertion::End,
+                Assertion::StartLine { .. } => IrAssertion::Start,
+                Assertion::EndLine { .. } => IrAssertion::End,
+
                 Assertion::LeftWordBoundary => IrAssertion::LeftWordBoundary,
                 Assertion::RightWordBoundary => IrAssertion::RightWordBoundary,
                 Assertion::WordBoundary => IrAssertion::WordBoundary,

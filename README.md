@@ -1,5 +1,5 @@
 # redos
-fast redos prevention in your codebase
+fast ReDoS detection in your codebase. detects any superlinear (non `O(n)`) regex matching.
 
 ## TODO
 
