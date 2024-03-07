@@ -7,6 +7,26 @@ use fancy_regex::{Assertion, Expr as RegexExpr, LookAround};
 
 use crate::vulnerability::VulnerabilityConfig;
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum IrAssertion {
+    /// Start of input text
+    StartText,
+    /// End of input text
+    EndText,
+    /// Start of a line
+    StartLine,
+    /// End of a line
+    EndLine,
+    /// Left word boundary
+    LeftWordBoundary,
+    /// Right word boundary
+    RightWordBoundary,
+    /// Both word boundaries
+    WordBoundary,
+    /// Not word boundary
+    NotWordBoundary,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum ExprConditional {
     Condition(Box<Expr>),
@@ -18,7 +38,7 @@ pub enum Expr {
     /// Some token, whether its a character class, any character, etc.
     Token,
     /// An assertion
-    Assertion(Assertion),
+    Assertion(IrAssertion),
     /// Concatenation of multiple expressions, must match in order, e.g. `a.` is a concatenation of
     /// the literal `a` and `.` for any character
     Concat(Vec<Expr>),
@@ -33,14 +53,10 @@ pub enum Expr {
     /// Look-around (e.g. positive/negative look-ahead or look-behind) with an expression, e.g.
     /// `(?=a)` means the next character must be `a` (but the match is not consumed)
     LookAround(Box<Expr>, LookAround),
-    /// Repeat of an expression, e.g. `a*` or `a+` or `a{1,3}`
-    Repeat {
-        /// The expression that is being repeated
-        child: Box<Expr>,
-        /// Greedy means as much as possible is matched, e.g. `.*b` would match all of `abab`.
-        /// Non-greedy means as little as possible, e.g. `.*?b` would match only `ab` in `abab`.
-        greedy: bool,
-    },
+    /// Some large repeat of an expression.
+    // Implementation Note: Greedy does not matter as if it doesn't match (in the case of ReDoS abuse),
+    // greedy will not affect its matching because of the terminal token.
+    Repeat(Box<Expr>),
     /// Optional expression, e.g. `a?` means `a` is optional
     Optional(Box<Expr>),
     /// Atomic non-capturing group, e.g. `(?>ab|a)` in text that contains `ab` will match `ab` and
@@ -66,7 +82,18 @@ pub fn to_expr(
     match expr {
         RegexExpr::Empty => None,
         RegexExpr::Any { .. } => Some(Expr::Token),
-        RegexExpr::Assertion(a) => Some(Expr::Assertion(*a)),
+        RegexExpr::Assertion(a) => Some(Expr::Assertion(
+            match a {
+                Assertion::StartText => IrAssertion::StartText,
+                Assertion::EndText => IrAssertion::EndText,
+                Assertion::StartLine { .. } => IrAssertion::StartLine,
+                Assertion::EndLine { .. } => IrAssertion::EndLine,
+                Assertion::LeftWordBoundary => IrAssertion::LeftWordBoundary,
+                Assertion::RightWordBoundary => IrAssertion::RightWordBoundary,
+                Assertion::WordBoundary => IrAssertion::WordBoundary,
+                Assertion::NotWordBoundary => IrAssertion::NotWordBoundary,
+            },
+        )),
         RegexExpr::Literal { .. } => Some(Expr::Token),
         // TODO: propagate group increment
         RegexExpr::Concat(list) => Some(Expr::Concat(
@@ -94,17 +121,15 @@ pub fn to_expr(
             child,
             lo,
             hi,
-            greedy,
+            greedy: _,
         } => {
             let range = hi - lo;
 
+            let expression = to_expr(child, config, group_increment);
             let expression = if range > config.max_quantifier {
-                to_expr(child, config, group_increment).map(|child| Expr::Repeat {
-                    child: Box::new(child),
-                    greedy: *greedy,
-                })
+                expression.map(|child| Expr::Repeat(Box::new(child)))
             } else {
-                to_expr(child, config, group_increment)
+                expression
             };
 
             if *lo == 0 {
