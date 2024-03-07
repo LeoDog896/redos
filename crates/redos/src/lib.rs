@@ -4,42 +4,129 @@ pub mod vulnerability;
 mod ilq;
 
 use fancy_regex::parse::Parser;
-use fancy_regex::{Expr as RegexExpr, Result};
+use fancy_regex::Expr as RegexExpr;
 use ir::{to_expr, Expr, ExprConditional};
 use vulnerability::{Vulnerability, VulnerabilityConfig};
 
-/// Returns true iif repeats are present anywhere in the regex
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RegexInfo {
+    has_repeat: bool,
+    has_alternation: bool,
+}
+
+impl RegexInfo {
+    fn merge(self, other: RegexInfo) -> RegexInfo {
+        RegexInfo {
+            has_repeat: self.has_repeat || other.has_repeat,
+            has_alternation: self.has_alternation || other.has_alternation,
+        }
+    }
+
+    fn empty() -> RegexInfo {
+        RegexInfo {
+            has_repeat: false,
+            has_alternation: false,
+        }
+    }
+}
+
+/// Returns base information about regex
 ///
 /// A regex must meet the following criteria to be even considered to be vulnerable:
 /// - It must contain a repeat
 /// - The repeat must have a bound size greater than `config.max_quantifier`
 /// - The regex must have a terminating state (to allow for backtracking) (TODO: this is not implemented yet)
-fn repeats_anywhere(expr: &Expr) -> bool {
+fn regex_pre_scan(expr: &Expr) -> RegexInfo {
     match expr {
-        Expr::Repeat { .. } => true,
-
-        // no nested expressions
-        Expr::Token => false,
-        Expr::Assertion(_) => false,
+        // even though there is a repeat, since it is the root node,
+        // we must dig deeper to see if the repeat does matter,
+        // since else this will violate our terminating state criteria
+        Expr::Repeat(expr) => regex_pre_scan(expr.as_ref()),
+        Expr::Token => RegexInfo::empty(),
+        Expr::Assertion(_) => RegexInfo::empty(),
 
         // propagate
-        Expr::Concat(list) => list.iter().any(repeats_anywhere),
-        Expr::Alt(list) => list.iter().any(repeats_anywhere),
-        Expr::Group(e, _) => repeats_anywhere(e.as_ref()),
-        Expr::LookAround(e, _) => repeats_anywhere(e.as_ref()),
-        Expr::AtomicGroup(e) => repeats_anywhere(e.as_ref()),
-        Expr::Optional(e) => repeats_anywhere(e.as_ref()),
+        Expr::Concat(list) => list.iter().fold(RegexInfo::empty(), |acc, e| {
+            acc.merge(regex_pre_scan_nested(e))
+        }),
+
+        // we use regex_pre_scan instead of nested because
+        // the alternations effectively act as different regexes
+        Expr::Alt(list) => list
+            .iter()
+            .fold(RegexInfo::empty(), |acc, e| acc.merge(regex_pre_scan(e)))
+            .merge(RegexInfo {
+                has_repeat: false,
+                has_alternation: true,
+            }),
+
+        // doesn't matter how many groups we nest it in,
+        // a group in the root node is as useful as
+        // not having a group at all
+        Expr::Group(e, _) => regex_pre_scan(e.as_ref()),
+        Expr::LookAround(e, _) => regex_pre_scan(e.as_ref()),
+        Expr::AtomicGroup(e) => regex_pre_scan(e.as_ref()),
+
+        // if the optional is in the root, it doesn't matter
+        // if it's nested or not, it will always match
+        Expr::Optional(e) => regex_pre_scan(e.as_ref()),
+
+        Expr::Conditional {
+            condition,
+            true_branch,
+            false_branch,
+        } => {
+            match condition {
+                // TODO: can we potentially skip the true_branch here if we know the group never matched
+                ExprConditional::BackrefExistsCondition(_) => {
+                    regex_pre_scan_nested(true_branch.as_ref())
+                        .merge(regex_pre_scan(false_branch.as_ref()))
+                }
+                ExprConditional::Condition(condition) => regex_pre_scan(condition.as_ref())
+                    .merge(regex_pre_scan_nested(true_branch.as_ref()))
+                    .merge(regex_pre_scan_nested(false_branch.as_ref())),
+            }
+        }
+    }
+}
+
+fn regex_pre_scan_nested(expr: &Expr) -> RegexInfo {
+    match expr {
+        Expr::Repeat(_) => RegexInfo {
+            has_repeat: true,
+            has_alternation: false,
+        },
+
+        // no nested expressions
+        Expr::Token => RegexInfo::empty(),
+        Expr::Assertion(_) => RegexInfo::empty(),
+
+        // propagate
+        Expr::Concat(list) => list.iter().fold(RegexInfo::empty(), |acc, e| {
+            acc.merge(regex_pre_scan_nested(e))
+        }),
+        Expr::Alt(list) => list
+            .iter()
+            .fold(RegexInfo::empty(), |acc, e| {
+                acc.merge(regex_pre_scan_nested(e))
+            })
+            .merge(RegexInfo {
+                has_repeat: false,
+                has_alternation: true,
+            }),
+        Expr::Group(e, _) => regex_pre_scan_nested(e.as_ref()),
+        Expr::LookAround(e, _) => regex_pre_scan_nested(e.as_ref()),
+        Expr::AtomicGroup(e) => regex_pre_scan_nested(e.as_ref()),
+        Expr::Optional(e) => regex_pre_scan_nested(e.as_ref()),
         Expr::Conditional {
             condition,
             true_branch,
             false_branch,
         } => match condition {
-            ExprConditional::BackrefExistsCondition(_) => false,
-            ExprConditional::Condition(condition) => {
-                repeats_anywhere(condition.as_ref())
-                    || repeats_anywhere(true_branch.as_ref())
-                    || repeats_anywhere(false_branch.as_ref())
-            }
+            ExprConditional::BackrefExistsCondition(_) => RegexInfo::empty(),
+            ExprConditional::Condition(condition) => regex_pre_scan_nested(condition.as_ref())
+                .merge(regex_pre_scan_nested(true_branch.as_ref()))
+                .merge(regex_pre_scan_nested(false_branch.as_ref())),
         },
     }
 }
@@ -55,7 +142,10 @@ pub struct VulnerabilityResult {
 }
 
 /// Returns the list of vulnerabilities in a regex
-pub fn vulnerabilities(regex: &str, config: &VulnerabilityConfig) -> Result<VulnerabilityResult> {
+pub fn vulnerabilities(
+    regex: &str,
+    config: &VulnerabilityConfig,
+) -> fancy_regex::Result<VulnerabilityResult> {
     // attempt to parse the regex with rust's regex parser
     let can_be_dfa = regex::Regex::new(regex).is_ok();
 
@@ -70,20 +160,39 @@ pub fn vulnerabilities(regex: &str, config: &VulnerabilityConfig) -> Result<Vuln
     }
 
     // second pass: turn AST into IR
-    let expr = to_expr(&tree.expr, config, nonzero_lit::usize!(1))
-        .expect("Failed to convert AST to IR; this is a bug");
+    let expr = match to_expr(&tree.expr, config, nonzero_lit::usize!(1)) {
+        Some(expr) => expr,
+        None => {
+            return Ok(VulnerabilityResult {
+                vulnerabilities: vec![],
+                dfa: can_be_dfa,
+            })
+        }
+    };
 
     // third pass: exit early if there are no repeats
-    if !repeats_anywhere(&expr) {
+    let regex_info = regex_pre_scan(&expr);
+    if !regex_info.has_repeat {
         return Ok(VulnerabilityResult {
             vulnerabilities: vec![],
             dfa: can_be_dfa,
         });
     }
 
-    // TODO: this is a fake placeholder
-    Ok(VulnerabilityResult {
-        vulnerabilities: vec![Vulnerability::InitialQuantifier],
-        dfa: can_be_dfa,
-    })
+    // scan for vulnerabilities
+    {
+        let mut vulnerabilities: Vec<Vulnerability> = vec![];
+
+        // first vulnerability scan: ILQ
+        let ilq = ilq::scan_ilq(&expr);
+
+        if ilq.is_present {
+            vulnerabilities.push(Vulnerability::InitialQuantifier);
+        }
+
+        Ok(VulnerabilityResult {
+            vulnerabilities,
+            dfa: can_be_dfa,
+        })
+    }
 }

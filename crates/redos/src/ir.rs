@@ -78,21 +78,19 @@ pub fn to_expr(
     match expr {
         RegexExpr::Empty => None,
         RegexExpr::Any { .. } => Some(Expr::Token),
-        RegexExpr::Assertion(a) => Some(Expr::Assertion(
-            match a {
-                // Since start and line only depend on the multiline flag,
-                // they don't particurally matter for ReDoS detection.
-                Assertion::StartText => IrAssertion::Start,
-                Assertion::EndText => IrAssertion::End,
-                Assertion::StartLine { .. } => IrAssertion::Start,
-                Assertion::EndLine { .. } => IrAssertion::End,
+        RegexExpr::Assertion(a) => Some(Expr::Assertion(match a {
+            // Since start and line only depend on the multiline flag,
+            // they don't particurally matter for ReDoS detection.
+            Assertion::StartText => IrAssertion::Start,
+            Assertion::EndText => IrAssertion::End,
+            Assertion::StartLine { .. } => IrAssertion::Start,
+            Assertion::EndLine { .. } => IrAssertion::End,
 
-                Assertion::LeftWordBoundary => IrAssertion::LeftWordBoundary,
-                Assertion::RightWordBoundary => IrAssertion::RightWordBoundary,
-                Assertion::WordBoundary => IrAssertion::WordBoundary,
-                Assertion::NotWordBoundary => IrAssertion::NotWordBoundary,
-            },
-        )),
+            Assertion::LeftWordBoundary => IrAssertion::LeftWordBoundary,
+            Assertion::RightWordBoundary => IrAssertion::RightWordBoundary,
+            Assertion::WordBoundary => IrAssertion::WordBoundary,
+            Assertion::NotWordBoundary => IrAssertion::NotWordBoundary,
+        })),
         RegexExpr::Literal { .. } => Some(Expr::Token),
         // TODO: propagate group increment
         RegexExpr::Concat(list) => Some(Expr::Concat(

@@ -1,42 +1,65 @@
-use crate::ir::{Expr, IrAssertion};
+use crate::ir::Expr;
 
-/// Scans an ilq. Assumes `expr` is the root expression of the tree.
-pub fn scan_ilq(expr: &Expr) -> bool {
-    match expr {
-        // if we hit anything that isn't a Vec<Expr>, we're done
-        Expr::Token => false,
-        Expr::Assertion(_) => false,
-        
-        Expr::Conditional { false_branch, .. } => scan_ilq_recursive(&false_branch).unwrap_or_else(|| false),
+/// Represents the result of an ILQ scan
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IlqReturn {
+    /// Whether the regex contains an ilq vulnerability
+    pub is_present: bool,
+}
 
+impl IlqReturn {
+    /// Creates a new IlqReturn
+    fn new(is_present: bool) -> Self {
+        Self { is_present }
     }
 }
 
-
-/// Returns Some(true) iif an ilq is present anywhere in the regex.
-/// Returns Some(false) iif no ilq is present anywhere in the regex.
-/// 
-/// Returns None if an ilq higher up in the recursive chain can continue
-/// looking through its Vec<Expr>
-fn scan_ilq_recursive(expr: &Expr) -> Option<bool> {
+/// Scans a regex tree for an ilq 'vulnerability'. Assumes `expr` is the root expression of the tree.
+pub fn scan_ilq(expr: &Expr) -> IlqReturn {
     match expr {
-        // if we hit a non-complex non-optional expression, we can stop
-        Expr::Token => Some(false),
-        // if we hit an odd assertion, we can stop
-        Expr::Assertion(assertion) => match assertion {
-            // initial large quantifier requires that the quantifier is first.
-            // if we hit this, it is not first
-            IrAssertion::Start => Some(false),
-            // odd that the end will be here, but regardless, not an ILQ
-            IrAssertion::End => Some(false),
-            // a word boundary linearizes any ilq
-            IrAssertion::WordBoundary => Some(false),
-            // TODO
-            _ => None
-        }
-        // explore every potential path for some ilq
-        Expr::Alt(list) => list.iter().find(|expr| scan_ilq(expr) == Some(false)),
-        // TODO
-        _ => None,
+        // if we hit anything that isn't a Vec<Expr>, we're done
+        Expr::Token => IlqReturn::new(false),
+        Expr::Assertion(_) => IlqReturn::new(false),
+
+        // hit an alternation? scan_ilq on the children; we can simply pretend
+        // as if they're also roots of their own trees.
+        // lets find the first child that is an ilq vulnerability
+        Expr::Alt(list) => list.iter().fold(IlqReturn::new(false), |acc, e| {
+            if acc.is_present {
+                acc
+            } else {
+                scan_ilq(e)
+            }
+        }),
+
+        // hit an optional token? we're done! an optional token
+        // in the root immediately indicates that it matches an empty string,
+        // and thus will finish in a minimal amount of time
+        Expr::Optional(_) => IlqReturn::new(false),
+
+        // if we hit some combinations of tokens, lets scan the children
+        Expr::Conditional { false_branch, .. } => IlqReturn::new(scan_ilq_nested(false_branch)),
+        Expr::Concat(list) => IlqReturn::new(list.iter().any(scan_ilq_nested)),
+        Expr::Group(e, _) => IlqReturn::new(scan_ilq_nested(e)),
+
+        // a repeating token? interesting.. we'll need to scan the child
+        // luckily, we can just pretend as if the child is the root of its own tree
+        Expr::Repeat(e) => scan_ilq(e),
+
+        Expr::LookAround(e, _) => scan_ilq(e),
+
+        // TODO: atomic groups and lookarounds
+        _ => IlqReturn::new(true),
+    }
+}
+
+/// Scans a regex tree for an ilq 'vulnerability'
+fn scan_ilq_nested(expr: &Expr) -> bool {
+    match expr {
+        // if we hit a non-optional token, we're done
+        Expr::Token => false,
+
+        // TODO: finish?
+        _ => true,
     }
 }
