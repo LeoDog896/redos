@@ -1,30 +1,30 @@
 base example
-        abc
+	abc
 lets try out groups
-        (abc|def)|[nhi]?
+	(abc|def)|[nhi]?
 tiny repeating string
-        a{1,10}
+	a{1,10}
 bigger repeated string that's just right
-        a{}
+	a{}
 nested group
-        (((a)))
+	(((a)))
 try putting some quantifiers outside
-        ((a+)+)+
+	((a+)+)+
 are optionals detected?
-        (a?)+
+	(a?)+
 lets try lookarounds
-        (?<=a)
-        (?<!a)
-        (?!a)
-        (?=a)
-        (?>a)
-        (?>a+)
+	(?<=a)
+	(?<!a)
+	(?!a)
+	(?=a)
+	(?>a)
+	(?>a+)
 can we decompose alternations?
-        (a+)|(b+)|(((a)))
+	(a+)|(b+)|(((a)))
 how about alternations in lookarounds?
-        (?<=a|b)
-        (?<!a|b)
-        (?!a|b)
-        (?=a|b)
-        (?>a|b)
-        (?>a+|b+)
+	(?<=a|b)
+	(?<!a|b)
+	(?!a|b)
+	(?=a|b)
+	(?>a|b)
+	(?>a+|b+)

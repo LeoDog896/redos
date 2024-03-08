@@ -16,7 +16,7 @@ mod tests {
 
             if line.starts_with('\t') {
                 let mut line = line.to_string();
-                line.pop();
+                line.remove(0);
                 tests.last_mut().unwrap().1.push(line);
             } else {
                 tests.push((line.to_string(), vec![]));
@@ -27,12 +27,20 @@ mod tests {
     }
 
     fn assert_safe(regex: &str, message: &str) {
+        let vulnerabilities = vulnerabilities(regex, &Default::default())
+            .map(|r| r.vulnerabilities);
+
+        assert!(
+            vulnerabilities.is_ok(),
+            "{} failed to get vulnerabilities: {}",
+            message,
+            regex
+        );
+
         assert_eq!(
-            vulnerabilities(regex, &Default::default())
-                .unwrap()
-                .vulnerabilities,
+            vulnerabilities.unwrap(),
             vec![],
-            "{} failed: {}",
+            "{} was not safe: {}",
             message,
             regex
         );
@@ -40,7 +48,10 @@ mod tests {
 
     #[test]
     fn check_safe() {
-        for (name, tests) in parse_test_file(SAFE) {
+        let test_suite = parse_test_file(SAFE);
+        assert!(!test_suite.is_empty());
+        for (name, tests) in test_suite {
+            assert!(!tests.is_empty());
             for test in tests {
                 assert_safe(&test, &name);
             }
