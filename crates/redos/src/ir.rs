@@ -23,13 +23,13 @@ pub enum IrAssertion {
     NotWordBoundary,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ExprConditional {
     Condition(Box<Expr>),
     BackrefExistsCondition(usize),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expr {
     /// Some token, whether its a character class, any character, etc.
     Token,

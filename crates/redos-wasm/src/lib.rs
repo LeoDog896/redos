@@ -26,3 +26,11 @@ pub fn vulnerabilities(regex: &str) -> String {
         redos::vulnerabilities(regex, &Default::default()).map(|r| r.vulnerabilities)
     )
 }
+
+#[wasm_bindgen]
+pub fn dfa(regex: &str) -> String {
+    format!(
+        "{:#?}",
+        redos::vulnerabilities(regex, &Default::default()).map(|r| r.dfa)
+    )
+}

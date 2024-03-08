@@ -8,17 +8,17 @@ use fancy_regex::Expr as RegexExpr;
 use ir::{to_expr, Expr, ExprConditional};
 use vulnerability::{Vulnerability, VulnerabilityConfig};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct RegexInfo {
-    has_repeat: bool,
-    has_alternation: bool,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegexInfo {
+    pub has_repeat: bool,
+    pub has_alternation: bool,
 }
 
 impl RegexInfo {
     fn merge(self, other: RegexInfo) -> RegexInfo {
         RegexInfo {
             has_repeat: self.has_repeat || other.has_repeat,
-            has_alternation: self.has_alternation || other.has_alternation,
+            has_alternation: self.has_alternation || other.has_alternation
         }
     }
 
@@ -84,7 +84,7 @@ fn regex_pre_scan(expr: &Expr) -> RegexInfo {
                 }
                 ExprConditional::Condition(condition) => regex_pre_scan(condition.as_ref())
                     .merge(regex_pre_scan_nested(true_branch.as_ref()))
-                    .merge(regex_pre_scan_nested(false_branch.as_ref())),
+                    .merge(regex_pre_scan_nested(false_branch.as_ref()))
             }
         }
     }
@@ -139,6 +139,9 @@ pub struct VulnerabilityResult {
 
     /// If this regex can be reduced to a DFA
     pub dfa: bool,
+
+    /// The information about the regex
+    pub regex_info: RegexInfo,
 }
 
 /// Returns the list of vulnerabilities in a regex
@@ -156,6 +159,7 @@ pub fn vulnerabilities(
         return Ok(VulnerabilityResult {
             vulnerabilities: vec![],
             dfa: can_be_dfa,
+            regex_info: RegexInfo::empty(),
         });
     }
 
@@ -166,6 +170,7 @@ pub fn vulnerabilities(
             return Ok(VulnerabilityResult {
                 vulnerabilities: vec![],
                 dfa: can_be_dfa,
+                regex_info: RegexInfo::empty(),
             })
         }
     };
@@ -176,6 +181,7 @@ pub fn vulnerabilities(
         return Ok(VulnerabilityResult {
             vulnerabilities: vec![],
             dfa: can_be_dfa,
+            regex_info,
         });
     }
 
@@ -193,6 +199,7 @@ pub fn vulnerabilities(
         Ok(VulnerabilityResult {
             vulnerabilities,
             dfa: can_be_dfa,
+            regex_info,
         })
     }
 }

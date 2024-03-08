@@ -27,8 +27,8 @@ mod tests {
     }
 
     fn assert_safe(regex: &str, message: &str) {
-        let vulnerabilities = vulnerabilities(regex, &Default::default())
-            .map(|r| r.vulnerabilities);
+        let vulnerabilities =
+            vulnerabilities(regex, &Default::default()).map(|r| r.vulnerabilities);
 
         assert!(
             vulnerabilities.is_ok(),

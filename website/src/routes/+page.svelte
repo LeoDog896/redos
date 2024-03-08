@@ -1,6 +1,6 @@
 <script lang="ts">
 	// @ts-ignore
-	import init, { parse, ir, vulnerabilities } from 'redos-wasm';
+	import init, { parse, ir, vulnerabilities, dfa } from 'redos-wasm';
 	import { onMount } from 'svelte';
 
 	let hasBeenEnabled = false;
@@ -13,11 +13,13 @@
 	let ast = '';
 	let irValue = '';
 	let vulns = '';
+    let dfaInfo = '';
 
 	$: if (hasBeenEnabled) {
 		ast = parse(regex);
 		irValue = ir(regex);
 		vulns = vulnerabilities(regex);
+        dfaInfo = dfa(regex);
 	}
 </script>
 
@@ -29,6 +31,8 @@
             <h1>AST</h1>
             <pre>{ast}</pre>
         </div>
+    </div>
+    <div class="output">
         <div class="subContainer">
             <h1>IR</h1>
             <pre>{irValue}</pre>
@@ -36,6 +40,12 @@
         <div class="subContainer">
             <h1>Vulnerabilities</h1>
             <pre>{vulns}</pre>
+        </div>
+    </div>
+    <div class="output">
+        <div class="subContainer">
+            <h1>DFA</h1>
+            <pre>{dfaInfo}</pre>
         </div>
     </div>
 </main>
@@ -78,7 +88,7 @@
 
     .subContainer {
         margin-top: 2rem;
-        width: 30%;
+        width: 100%;
         height: 100%;
         padding: 1rem;
         background-color: var(--backgroundIsh);
