@@ -28,7 +28,7 @@ Complexity: `O(2^n)` (exponential)
 
 ## Exponential Overlapping Adjacency
 
-- 2 tokens with big quantifiers are present in the group, and overlap
+- 1 tokens with a big quantifier and one with none is present in the group, and overlap
 
 Small example: `b(aa+)+$`
 

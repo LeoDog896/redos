@@ -2,6 +2,7 @@ pub mod ir;
 pub mod vulnerability;
 
 mod ilq;
+mod nq;
 
 use fancy_regex::parse::Parser;
 use fancy_regex::Expr as RegexExpr;

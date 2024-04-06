@@ -1,4 +1,4 @@
-use crate::ir::Expr;
+use crate::ir::{Expr, IrAssertion};
 
 /// Represents the result of an ILQ scan
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,7 +14,8 @@ impl IlqReturn {
     }
 }
 
-/// Scans a regex tree for an ilq 'vulnerability'. Assumes `expr` is the root expression of the tree.
+/// Scans a regex tree for an initial large quantifier 'vulnerability'.
+/// Assumes `expr` is the root expression of the tree.
 pub fn scan_ilq(expr: &Expr) -> IlqReturn {
     match expr {
         // if we hit anything that isn't a Vec<Expr>, we're done
@@ -37,10 +38,20 @@ pub fn scan_ilq(expr: &Expr) -> IlqReturn {
         // and thus will finish in a minimal amount of time
         Expr::Optional(_) => IlqReturn::new(false),
 
-        // if we hit some combinations of tokens, lets scan the children
-        Expr::Conditional { false_branch, .. } => IlqReturn::new(scan_ilq_nested(false_branch)),
-        Expr::Concat(list) => IlqReturn::new(list.iter().any(scan_ilq_nested)),
-        Expr::Group(e, _) => IlqReturn::new(scan_ilq_nested(e)),
+        // if we hit some combinations of tokens, lets scan the children.
+        // since this is the root node, the false branch is the only one that matters
+        Expr::Conditional { false_branch, .. } => scan_ilq(false_branch),
+        Expr::Concat(list) => {
+            // We care strongly about Concat nodes, as they represent a sequence of tokens.
+            // Lets loop through the list of tokens and scan them.
+            // If any of them are a required token with no repetition, we can skip them.
+
+            // Once we hit a required token with repetition, we need to finally make sure there exists
+            // a required token.
+
+            scan_ilq_concat(list)
+        },
+        Expr::Group(e, _) => scan_ilq(e),
 
         // a repeating token? interesting.. we'll need to scan the child
         // luckily, we can just pretend as if the child is the root of its own tree
@@ -54,13 +65,43 @@ pub fn scan_ilq(expr: &Expr) -> IlqReturn {
     }
 }
 
-/// Scans a regex tree for an ilq 'vulnerability'
-fn scan_ilq_nested(expr: &Expr) -> bool {
-    match expr {
-        // if we hit a non-optional token, we're done
-        Expr::Token => false,
+enum ConcatResults {
+    FoundRepeatToken,
+    HitRequiredToken,
+    Continue,
+}
 
-        // TODO: finish?
-        _ => true,
+fn scan_ilq_concat(exprs: &Vec<Expr>) -> IlqReturn {
+
+    // first, lets try to hit a repeat token
+    for expr in exprs {
+        let result: ConcatResults = match expr {
+            Expr::Token => ConcatResults::HitRequiredToken,
+            Expr::Assertion(assertion) => match assertion {
+                IrAssertion::Start => ConcatResults::HitRequiredToken,
+                IrAssertion::End => ConcatResults::HitRequiredToken,
+                IrAssertion::WordBoundary => ConcatResults::HitRequiredToken,
+                // since this is 'not' a word boundary,
+                // it isn't a required token, so we can continue with our search
+                IrAssertion::NotWordBoundary => ConcatResults::Continue,
+                IrAssertion::LeftWordBoundary => ConcatResults::HitRequiredToken,
+                IrAssertion::RightWordBoundary => ConcatResults::HitRequiredToken,
+            },
+            Expr::Alt(list) => (),
+            Expr::Optional(_) => (),
+            Expr::Conditional { false_branch, .. } => (),
+
+            Expr::Concat(list) => (),
+
+            // We encountered one!
+            Expr::Repeat(e) => (),
+
+            Expr::Group(e, _) => (),
+            Expr::LookAround(e, _) => (),
+            Expr::AtomicGroup(e) => (),
+        };
     }
+
+    // TODO: implement this
+    IlqReturn::new(false)
 }
