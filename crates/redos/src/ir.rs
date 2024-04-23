@@ -30,9 +30,56 @@ pub enum ExprConditional {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+pub struct ExprNode {
+  current: Expr,
+  previous: Option<Box<ExprNode>>,
+  next: Option<Box<ExprNode>>,
+  parent: Option<Box<ExprNode>>
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Value {
+  Singular(String),
+  Range(String, String)
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Token {
+  /// Singular tokens that can be matched in this token
+  yes: Vec<Value>,
+  /// Singular tokens that can't be matched in this token
+  no: Vec<Value>
+}
+
+impl Token {
+  /// Creates a new token.
+  /// Takes in a basic regex that is either a single character
+  /// or a character class.
+  fn new(regex: &str) -> Token {
+    if !(regex.contains('[') || regex.contains(']')) {
+      // This isn't a character class - just a single character
+      Token {
+        yes: vec![Value::Singular(regex.to_string())],
+        no: vec![]
+      }
+    } else {
+      unimplemented!("No support for parsing character classes yet.")
+    }
+  }
+
+  fn new_ignore_case(regex: &str) -> Token {
+    unimplemented!("Can not ignore case when creating tokens yet.")
+  }
+
+  fn overlaps(&self, token: &Token) -> bool {
+    unimplemented!("Can not detect overlapping tokens yet.")
+  }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expr {
     /// Some token, whether its a character class, any character, etc.
-    Token,
+    Token(Token),
     /// An assertion
     Assertion(IrAssertion),
     /// Concatenation of multiple expressions, must match in order, e.g. `a.` is a concatenation of
@@ -77,7 +124,14 @@ pub fn to_expr(
 ) -> Option<Expr> {
     match expr {
         RegexExpr::Empty => None,
-        RegexExpr::Any { .. } => Some(Expr::Token),
+        RegexExpr::Any { newline } => Some(Expr::Token(if *newline {
+          Token::new(".")
+        } else {
+          Token {
+            yes: vec![Value::Singular(".".to_string())],
+            no: vec![Value::Singular("\\n".to_string())]
+          }
+        })),
         RegexExpr::Assertion(a) => Some(Expr::Assertion(match a {
             // Since start and line only depend on the multiline flag,
             // they don't particurally matter for ReDoS detection.
@@ -91,7 +145,11 @@ pub fn to_expr(
             Assertion::WordBoundary => IrAssertion::WordBoundary,
             Assertion::NotWordBoundary => IrAssertion::NotWordBoundary,
         })),
-        RegexExpr::Literal { .. } => Some(Expr::Token),
+        RegexExpr::Literal { casei, val } => Some(Expr::Token(if *casei {
+          Token::new_ignore_case(val)
+        } else {
+          Token::new(val)
+        })),
         // TODO: propagate group increment
         RegexExpr::Concat(list) => Some(Expr::Concat(
             list.iter()
@@ -136,11 +194,15 @@ pub fn to_expr(
             }
         }
         // Delegates essentially forcibly match some string, so we can turn them into a token
-        RegexExpr::Delegate { .. } => Some(Expr::Token),
+        RegexExpr::Delegate { inner, casei, .. } => Some(Expr::Token(if *casei {
+          Token::new_ignore_case(inner)
+        } else {
+          Token::new(inner)
+        })),
         // note that since we convert backrefs to tokens, the complexity of a vulnerability
         // may underestimate the actual complexity, though this will not cause
         // false negatives
-        RegexExpr::Backref(_) => Some(Expr::Token),
+        RegexExpr::Backref(_) => unimplemented!("Backrefs are not supported yet."),
         RegexExpr::AtomicGroup(e) => {
             to_expr(e, config, group_increment).map(|e| Expr::AtomicGroup(Box::new(e)))
         }

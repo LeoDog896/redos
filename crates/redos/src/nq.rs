@@ -34,6 +34,12 @@ pub fn scan_nq(expr: &Expr) -> NqReturn {
         Expr::Optional(e) => scan_nq(e),
         Expr::Conditional { false_branch, .. } => scan_nq(false_branch),
         Expr::Repeat(e) => scan_nq(e),
-        
+        Expr::Concat(expr) => scan_concat(expr),
     }
+}
+
+fn scan_concat(exprs: &Vec<Expr>) -> Expr {
+  for expr in exprs {
+    
+  }
 }
