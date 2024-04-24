@@ -39,7 +39,5 @@ pub fn scan_nq(expr: &Expr) -> NqReturn {
 }
 
 fn scan_concat(exprs: &Vec<Expr>) -> Expr {
-  for expr in exprs {
-    
-  }
+    for expr in exprs {}
 }

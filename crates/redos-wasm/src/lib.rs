@@ -11,11 +11,7 @@ pub fn ir(regex: &str) -> String {
     let parser = Parser::parse(regex);
     format!(
         "{:#?}",
-        parser.map(|tree| redos::ir::to_expr(
-            &tree.expr,
-            &Default::default(),
-            nonzero_lit::usize!(1)
-        ))
+        parser.map(|tree| redos::ir::to_expr(&tree.expr, &Default::default()))
     )
 }
 
