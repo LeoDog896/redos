@@ -14,7 +14,11 @@ impl NqReturn {
     }
 }
 
-/// Scans a regex tree for an nested quantifier 'vulnerability'. Assumes `expr` is the root expression of the tree.
+/// Scans a regex tree for an nested quantifier 'vulnerability'.
+/// Assumes `expr` is the root expression of the tree.
+/// 
+/// The regex must match the pattern (where t is arbitrary matchable tokens):
+/// t*(t*)*t+
 pub fn scan_nq(expr: &Expr) -> NqReturn {
     match expr {
         Expr::Token => NqReturn::new(false),
@@ -35,5 +39,24 @@ pub fn scan_nq(expr: &Expr) -> NqReturn {
         Expr::Conditional { false_branch, .. } => scan_nq(false_branch),
         Expr::Repeat(e) => scan_nq(e),
         
+        Expr::Concat(tokens) => {
+            
+        }
     }
+}
+
+fn search_repeat(tokens: &Vec<Expr>) -> Option<Expr> {
+    for token in tokens {
+        match token {
+            Expr::Repeat(_) => return Some(token),
+            Expr::Concat(list) => {
+                if search_repeat(list) {
+                    return true;
+                }
+            },
+            _ => {}
+        }
+    }
+
+    None
 }

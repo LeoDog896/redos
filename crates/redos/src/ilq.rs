@@ -16,6 +16,9 @@ impl IlqReturn {
 
 /// Scans a regex tree for an initial large quantifier 'vulnerability'.
 /// Assumes `expr` is the root expression of the tree.
+/// 
+/// The regex must match the pattern (where t is arbitrary matchable tokens):
+/// t*t+t+
 pub fn scan_ilq(expr: &Expr) -> IlqReturn {
     match expr {
         // if we hit anything that isn't a Vec<Expr>, we're done
