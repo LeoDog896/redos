@@ -105,36 +105,41 @@ impl Token {
     }
 }
 
-fn container(
-    previous: Option<ExprNode>,
-    parent: Option<ExprNode>,
-    group_increment: NonZeroUsize,
-    config: &VulnerabilityConfig,
-    expr: &RegexExpr
-) -> Option<ExprNode> {
-    let mut node = ExprNode::new_leaf(
-        Expr::Group(Box::new(ExprNode::dummy()), group_increment.into()),
-        previous,
-        parent,
-    );
+macro_rules! container {
+    (
+        $previous: ident,
+        $parent: ident,
+        $group_increment: ident,
+        $config: ident,
+        $expr: ident,
+        $gen:expr
+    ) => {
+        {
+            let mut node = ExprNode::new_leaf(
+                Expr::Group(Box::new(ExprNode::dummy()), $group_increment.into()),
+                $previous,
+                $parent,
+            );
 
-    let nest: Option<ExprNode> = to_nested_expr(
-        expr,
-        config,
-        group_increment
-            .checked_add(1)
-            .expect("group increment overflow"),
-        Some(node),
-        Some(node),
-    );
+            let nest = to_nested_expr(
+                $expr,
+                $config,
+                $group_increment
+                    .checked_add(1)
+                    .expect("group increment overflow"),
+                Some(node),
+                Some(node),
+            );
 
-    if nest.is_none() {
-        return None;
+            if nest.is_none() {
+                return None;
+            }
+
+            node.current = $gen(nest);
+
+            Some(node)
+        }
     }
-
-    node.current = Expr::Group(Box::new(nest.unwrap()), group_increment.into());
-
-    Some(node)
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -271,32 +276,18 @@ fn to_nested_expr(
             Some(alt_expr_node)
         },
         RegexExpr::Group(e) => {
-            let mut group = ExprNode::new_leaf(
-                Expr::Group(Box::new(ExprNode::dummy()), group_increment.into()),
-                previous,
-                parent,
-            );
-
-            let group_nest: Option<ExprNode> = to_nested_expr(
-                e,
-                config,
-                group_increment
-                    .checked_add(1)
-                    .expect("group increment overflow"),
-                Some(group),
-                Some(group),
-            );
-
-            if group_nest.is_none() {
-                return None;
-            }
-
-            group.current = Expr::Group(Box::new(group_nest.unwrap()), group_increment.into());
-
-            Some(group)
+            container!(previous, parent, group_increment, config, e, |tree: Option<ExprNode>| {
+                Expr::Group(
+                    Box::new(tree.unwrap()), group_increment.into()
+                )
+            })
         }
         RegexExpr::LookAround(e, la) => {
-            to_nested_expr(e, config, group_increment).map(|e| Expr::LookAround(Box::new(e), *la))
+            container!(previous, parent, group_increment, config, e, |tree: Option<ExprNode>| {
+                Expr::LookAround(
+                    Box::new(tree.unwrap()), *la
+                )
+            })
         }
         RegexExpr::Repeat {
             child,
@@ -330,7 +321,11 @@ fn to_nested_expr(
         // false negatives
         RegexExpr::Backref(_) => unimplemented!("Backrefs are not supported yet."),
         RegexExpr::AtomicGroup(e) => {
-            to_nested_expr(e, config, group_increment).map(|e| Expr::AtomicGroup(Box::new(e)))
+            container!(previous, parent, group_increment, config, e, |tree: Option<ExprNode>| {
+                Expr::AtomicGroup(
+                    Box::new(tree.unwrap())
+                )
+            })
         }
         RegexExpr::KeepOut => unimplemented!("Keep out not supported."),
         RegexExpr::ContinueFromPreviousMatchEnd => {
