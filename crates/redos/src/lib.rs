@@ -19,7 +19,7 @@ impl RegexInfo {
     fn merge(self, other: RegexInfo) -> RegexInfo {
         RegexInfo {
             has_repeat: self.has_repeat || other.has_repeat,
-            has_alternation: self.has_alternation || other.has_alternation
+            has_alternation: self.has_alternation || other.has_alternation,
         }
     }
 
@@ -85,7 +85,7 @@ fn regex_pre_scan(expr: &Expr) -> RegexInfo {
                 }
                 ExprConditional::Condition(condition) => regex_pre_scan(condition.as_ref())
                     .merge(regex_pre_scan_nested(true_branch.as_ref()))
-                    .merge(regex_pre_scan_nested(false_branch.as_ref()))
+                    .merge(regex_pre_scan_nested(false_branch.as_ref())),
             }
         }
     }

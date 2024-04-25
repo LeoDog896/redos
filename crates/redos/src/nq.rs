@@ -38,25 +38,10 @@ pub fn scan_nq(expr: &Expr) -> NqReturn {
         Expr::Optional(e) => scan_nq(e),
         Expr::Conditional { false_branch, .. } => scan_nq(false_branch),
         Expr::Repeat(e) => scan_nq(e),
-        
-        Expr::Concat(tokens) => {
-            
-        }
+        Expr::Concat(expr) => scan_concat(expr),
     }
 }
 
-fn search_repeat(tokens: &Vec<Expr>) -> Option<Expr> {
-    for token in tokens {
-        match token {
-            Expr::Repeat(_) => return Some(token),
-            Expr::Concat(list) => {
-                if search_repeat(list) {
-                    return true;
-                }
-            },
-            _ => {}
-        }
-    }
-
-    None
+fn scan_concat(exprs: &Vec<Expr>) -> Expr {
+    for expr in exprs {}
 }

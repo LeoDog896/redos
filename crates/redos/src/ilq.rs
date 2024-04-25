@@ -53,7 +53,7 @@ pub fn scan_ilq(expr: &Expr) -> IlqReturn {
             // a required token.
 
             scan_ilq_concat(list)
-        },
+        }
         Expr::Group(e, _) => scan_ilq(e),
 
         // a repeating token? interesting.. we'll need to scan the child
@@ -75,7 +75,6 @@ enum ConcatResults {
 }
 
 fn scan_ilq_concat(exprs: &Vec<Expr>) -> IlqReturn {
-
     // first, lets try to hit a repeat token
     for expr in exprs {
         let result: ConcatResults = match expr {
