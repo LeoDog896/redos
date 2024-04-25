@@ -105,43 +105,38 @@ impl Token {
     }
 }
 
-macro_rules! container {
-    (
-        $previous: ident,
-        $parent: ident,
-        $group_increment: ident,
-        $config: ident,
-        $expr: ident,
-        $gen:expr
-    ) => {
-        {
-            let mut node = ExprNode::new_leaf(
-                Expr::Group(Box::new(ExprNode::dummy()), $group_increment.into()),
-                $previous,
-                $parent,
-            );
+fn container<F>(
+    previous: Option<ExprNode>,
+    parent: Option<ExprNode>,
+    group_increment: NonZeroUsize,
+    config: &VulnerabilityConfig,
+    expr: &RegexExpr,
+    gen: F
+) -> Option<ExprNode> where F: FnOnce(Option<ExprNode>) -> Expr {
+    let mut node = ExprNode::new_leaf(
+        Expr::Group(Box::new(ExprNode::dummy()), group_increment.into()),
+        previous,
+        parent,
+    );
 
-            let nest = to_nested_expr(
-                $expr,
-                $config,
-                $group_increment
-                    .checked_add(1)
-                    .expect("group increment overflow"),
-                Some(node),
-                Some(node),
-            );
+    let nest = to_nested_expr(
+        expr,
+        config,
+        group_increment
+            .checked_add(1)
+            .expect("group increment overflow"),
+        Some(node),
+        Some(node),
+    );
 
-            if nest.is_none() {
-                return None;
-            }
-
-            node.current = $gen(nest);
-
-            Some(node)
-        }
+    if nest.is_none() {
+        return None;
     }
-}
 
+    node.current = gen(nest);
+
+    Some(node)
+}
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expr {
     /// Some token, whether its a character class, any character, etc.
@@ -276,14 +271,14 @@ fn to_nested_expr(
             Some(alt_expr_node)
         },
         RegexExpr::Group(e) => {
-            container!(previous, parent, group_increment, config, e, |tree: Option<ExprNode>| {
+            container(previous, parent, group_increment, config, e, |tree: Option<ExprNode>| {
                 Expr::Group(
                     Box::new(tree.unwrap()), group_increment.into()
                 )
             })
         }
         RegexExpr::LookAround(e, la) => {
-            container!(previous, parent, group_increment, config, e, |tree: Option<ExprNode>| {
+            container(previous, parent, group_increment, config, e, |tree: Option<ExprNode>| {
                 Expr::LookAround(
                     Box::new(tree.unwrap()), *la
                 )
@@ -321,7 +316,7 @@ fn to_nested_expr(
         // false negatives
         RegexExpr::Backref(_) => unimplemented!("Backrefs are not supported yet."),
         RegexExpr::AtomicGroup(e) => {
-            container!(previous, parent, group_increment, config, e, |tree: Option<ExprNode>| {
+            container(previous, parent, group_increment, config, e, |tree: Option<ExprNode>| {
                 Expr::AtomicGroup(
                     Box::new(tree.unwrap())
                 )
