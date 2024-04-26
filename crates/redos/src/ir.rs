@@ -25,7 +25,7 @@ pub enum IrAssertion {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ExprConditional {
-    Condition(Box<Expr>),
+    Condition(Box<ExprNode>),
     BackrefExistsCondition(usize),
 }
 
@@ -62,6 +62,18 @@ impl ExprNode {
             previous: None,
             next: None,
             parent: None,
+        }
+    }
+
+    fn parented_dummy(parent: Option<ExprNode>, previous: Option<ExprNode>) -> ExprNode {
+        ExprNode {
+            current: Expr::Token(Token {
+                yes: vec![],
+                no: vec![],
+            }),
+            previous: option_rc(previous),
+            next: None,
+            parent: option_rc(parent),
         }
     }
 }
@@ -332,24 +344,34 @@ fn to_nested_expr(
             true_branch,
             false_branch,
         } => {
-            let true_branch = to_nested_expr(true_branch, config, group_increment);
-            let false_branch = to_nested_expr(false_branch, config, group_increment);
+            let condition_parent = ExprNode::parented_dummy(parent, previous);
+
+            let true_branch = to_nested_expr(true_branch, config, group_increment, Some(condition_parent), Some(condition_parent));
+            let false_branch = to_nested_expr(false_branch, config, group_increment, Some(condition_parent), Some(condition_parent));
             if let (Some(true_branch), Some(false_branch)) = (true_branch, false_branch) {
                 let condition: Option<ExprConditional> = match condition.as_ref() {
                     &RegexExpr::BackrefExistsCondition(number) => {
                         Some(ExprConditional::BackrefExistsCondition(number))
                     }
-                    expr => to_nested_expr(expr, config, group_increment)
+                    expr => to_nested_expr(expr, config, group_increment, parent, previous)
                         .map(|x| ExprConditional::Condition(Box::new(x))),
                 };
 
-                condition.map(|condition| Expr::Conditional {
+                let condition = condition.map(|condition| Expr::Conditional {
                     condition,
                     true_branch: Box::new(true_branch),
                     false_branch: Box::new(false_branch),
-                })
+                });
+
+                if condition.is_none() {
+                    return None;
+                }
+
+                condition_parent.current = condition.unwrap();
+
+                Some(condition_parent)
             } else {
-                None
+                return None;
             }
         }
     }
