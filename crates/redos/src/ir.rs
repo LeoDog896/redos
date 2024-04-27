@@ -43,12 +43,12 @@ pub struct ExprNode {
 
 impl ExprNode {
     /// Helper function that creates a new node for the IR generation
-    fn new_prev(current: Expr, previous: Option<ExprNode>, parent: Option<ExprNode>) -> ExprNode {
+    fn new_prev(current: Expr, previous: Option<Rc<ExprNode>>, parent: Option<Rc<ExprNode>>) -> ExprNode {
         ExprNode {
             current,
-            previous: option_rc(previous),
+            previous,
             next: None,
-            parent: option_rc(parent),
+            parent,
         }
     }
 
@@ -56,8 +56,8 @@ impl ExprNode {
     /// allowing consuming itself to reparent its child expressions.
     fn new_prev_consume_optional<F>(
         current: F,
-        previous: Option<ExprNode>,
-        parent: Option<ExprNode>,
+        previous: Option<Rc<ExprNode>>,
+        parent: Option<Rc<ExprNode>>,
     ) -> Option<ExprNode> where F: FnOnce(&ExprNode) -> Option<Expr> {
         // Here, we don't care about current; we are going to replace it
         let mut node = ExprNode::new_prev(Expr::Concat(vec![]), previous, parent);
@@ -75,8 +75,8 @@ impl ExprNode {
 
     fn new_prev_consume<F>(
         current: F,
-        previous: Option<ExprNode>,
-        parent: Option<ExprNode>
+        previous: Option<Rc<ExprNode>>,
+        parent: Option<Rc<ExprNode>>
     ) -> ExprNode where F: FnOnce(&ExprNode) -> Expr {
         Self::new_prev_consume_optional(|x| Some(current(x)), previous, parent).unwrap()
     }
@@ -95,16 +95,16 @@ impl ExprNode {
         }
     }
 
-    fn parented_dummy(parent: Option<ExprNode>, previous: Option<ExprNode>) -> ExprNode {
+    fn parented_dummy(parent: Option<Rc<ExprNode>>, previous: Option<Rc<ExprNode>>) -> ExprNode {
         ExprNode {
             current: Expr::Token(Token {
                 yes: vec![],
                 no: vec![],
                 ignore_case: false
             }),
-            previous: option_rc(previous),
+            previous,
             next: None,
-            parent: option_rc(parent),
+            parent,
         }
     }
 }
@@ -152,8 +152,8 @@ impl Token {
 }
 
 fn container<F>(
-    previous: Option<ExprNode>,
-    parent: Option<ExprNode>,
+    previous: Option<Rc<ExprNode>>,
+    parent: Option<Rc<ExprNode>>,
     group_increment: NonZeroUsize,
     config: &VulnerabilityConfig,
     expr: &RegexExpr,
@@ -171,8 +171,8 @@ fn container<F>(
         group_increment
             .checked_add(1)
             .expect("group increment overflow"),
-        Some(node.clone()), // TODO: expensive clone
-        Some(node.clone()),
+        Some(Rc::new(node.clone())), // TODO: expensive clone
+        Some(Rc::new(node.clone())),
     );
 
     if nest.is_none() {
@@ -236,8 +236,8 @@ fn to_nested_expr(
     expr: &RegexExpr,
     config: &VulnerabilityConfig,
     group_increment: NonZeroUsize,
-    parent: Option<ExprNode>,
-    previous: Option<ExprNode>,
+    parent: Option<Rc<ExprNode>>,
+    previous: Option<Rc<ExprNode>>,
 ) -> Option<ExprNode> {
     match expr {
         RegexExpr::Empty => None,
@@ -283,7 +283,7 @@ fn to_nested_expr(
         // TODO: propagate group increment
         RegexExpr::Concat(list) => ExprNode::new_prev_consume_optional(|parent| {
             let no_siblings_list = list.iter()
-                .filter_map(|e| to_nested_expr(e, config, group_increment, Some(parent.clone()), None))
+                .filter_map(|e| to_nested_expr(e, config, group_increment, Some(Rc::new(parent.clone())), None))
                 .collect::<Vec<_>>();
 
             let nodes = no_siblings_list.iter()
@@ -316,7 +316,7 @@ fn to_nested_expr(
             let mut alt_expr_node = ExprNode::new_prev(Expr::Alt(vec![]), previous, parent);
 
             let list = list.iter()
-                .filter_map(|e| to_nested_expr(e, config, group_increment, Some(alt_expr_node.clone()), Some(alt_expr_node.clone())))
+                .filter_map(|e| to_nested_expr(e, config, group_increment, Some(Rc::new(alt_expr_node.clone())), Some(Rc::new(alt_expr_node.clone()))))
                 .collect();
 
             alt_expr_node.current = Expr::Alt(list);
@@ -354,11 +354,11 @@ fn to_nested_expr(
             ExprNode::new_prev_consume_optional(|node| {
                 let repeat_node = if range > config.four_max_quantifier {
                     ExprNode::new_prev_consume_optional(|node| {
-                        to_nested_expr(child.to_owned(), config, group_increment, Some(node.clone()), Some(node.clone()))
+                        to_nested_expr(child.to_owned(), config, group_increment, Some(Rc::new(node.clone())), Some(Rc::new(node.clone())))
                             .map(|x| Expr::Repeat(Box::new(x)))
-                    }, Some(node.clone()), Some(node.clone()))
+                    }, Some(Rc::new(node.clone())), Some(Rc::new(node.clone())))
                 } else {
-                    to_nested_expr(child, config, group_increment, Some(node.clone()), Some(node.clone()))
+                    to_nested_expr(child, config, group_increment, Some(Rc::new(node.clone())), Some(Rc::new(node.clone())))
                 };
 
                 if repeat_node.is_none() {
@@ -401,8 +401,8 @@ fn to_nested_expr(
         } => {
             let mut condition_parent = ExprNode::parented_dummy(parent.clone(), previous.clone());
 
-            let true_branch = to_nested_expr(true_branch, config, group_increment, Some(condition_parent.clone()), Some(condition_parent.clone()));
-            let false_branch = to_nested_expr(false_branch, config, group_increment, Some(condition_parent.clone()), Some(condition_parent.clone()));
+            let true_branch = to_nested_expr(true_branch, config, group_increment, Some(Rc::new(condition_parent.clone())), Some(Rc::new(condition_parent.clone())));
+            let false_branch = to_nested_expr(false_branch, config, group_increment, Some(Rc::new(condition_parent.clone())), Some(Rc::new(condition_parent.clone())));
             if let (Some(true_branch), Some(false_branch)) = (true_branch, false_branch) {
                 let condition: Option<ExprConditional> = match condition.as_ref() {
                     &RegexExpr::BackrefExistsCondition(number) => {
