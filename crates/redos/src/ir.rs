@@ -42,14 +42,46 @@ pub struct ExprNode {
 }
 
 impl ExprNode {
-    /// Helper function that creates a leaf for the IR generation
-    fn new_leaf(current: Expr, previous: Option<ExprNode>, parent: Option<ExprNode>) -> ExprNode {
+    /// Helper function that creates a new node for the IR generation
+    fn new_prev(current: Expr, previous: Option<ExprNode>, parent: Option<ExprNode>) -> ExprNode {
         ExprNode {
             current,
             previous: option_rc(previous),
             next: None,
             parent: option_rc(parent),
         }
+    }
+
+    /// Helper function that creates a new node for the IR generation,
+    /// allowing consuming itself to reparent its child expressions.
+    fn new_prev_consume_optional<F>(
+        current: F,
+        previous: Option<ExprNode>,
+        parent: Option<ExprNode>,
+    ) -> Option<ExprNode> where F: FnOnce(&ExprNode) -> Option<Expr> {
+        // Here, we don't care about current; we are going to replace it
+        let mut node = ExprNode::new_prev(Expr::Token(Token {
+            yes: vec![],
+            no: vec![],
+        }), previous, parent);
+
+        let child = current(&node);
+
+        if child.is_none() {
+            return None
+        }
+
+        node.current = child.unwrap();
+
+        Some(node)
+    }
+
+    fn new_prev_consume<F>(
+        current: F,
+        previous: Option<ExprNode>,
+        parent: Option<ExprNode>
+    ) -> ExprNode where F: FnOnce(&ExprNode) -> Expr {
+        Self::new_prev_consume_optional(|x| Some(current(x)), previous, parent).unwrap()
     }
 
     /// Helper function that produces a dummy value
@@ -125,7 +157,7 @@ fn container<F>(
     expr: &RegexExpr,
     gen: F
 ) -> Option<ExprNode> where F: FnOnce(Option<ExprNode>) -> Expr {
-    let mut node = ExprNode::new_leaf(
+    let mut node = ExprNode::new_prev(
         Expr::Group(Box::new(ExprNode::dummy()), group_increment.into()),
         previous,
         parent,
@@ -137,8 +169,8 @@ fn container<F>(
         group_increment
             .checked_add(1)
             .expect("group increment overflow"),
-        Some(node),
-        Some(node),
+        Some(node.clone()), // TODO: expensive clone
+        Some(node.clone()),
     );
 
     if nest.is_none() {
@@ -202,7 +234,7 @@ fn to_nested_expr(
 ) -> Option<ExprNode> {
     match expr {
         RegexExpr::Empty => None,
-        RegexExpr::Any { newline } => Some(ExprNode::new_leaf(
+        RegexExpr::Any { newline } => Some(ExprNode::new_prev(
             Expr::Token(if *newline {
                 Token::new(".")
             } else {
@@ -214,7 +246,7 @@ fn to_nested_expr(
             previous,
             parent,
         )),
-        RegexExpr::Assertion(a) => Some(ExprNode::new_leaf(
+        RegexExpr::Assertion(a) => Some(ExprNode::new_prev(
             Expr::Assertion(match a {
                 // Since start and line only depend on the multiline flag,
                 // they don't particurally matter for ReDoS detection.
@@ -231,7 +263,7 @@ fn to_nested_expr(
             previous,
             parent,
         )),
-        RegexExpr::Literal { casei, val } => Some(ExprNode::new_leaf(
+        RegexExpr::Literal { casei, val } => Some(ExprNode::new_prev(
             Expr::Token(if *casei {
                 Token::new_ignore_case(val)
             } else {
@@ -242,19 +274,19 @@ fn to_nested_expr(
         )),
         // TODO: propagate group increment
         RegexExpr::Concat(list) => {
-            let mut concat_node = ExprNode::new_leaf(Expr::Concat(vec![]), previous, parent);
+            let mut concat_node = ExprNode::new_prev(Expr::Concat(vec![]), previous, parent);
 
             let no_siblings_list = list.iter()
-                .filter_map(|e| to_nested_expr(e, config, group_increment, Some(concat_node), None))
+                .filter_map(|e| to_nested_expr(e, config, group_increment, Some(concat_node.clone()), None))
                 .collect::<Vec<_>>();
 
             let nodes = no_siblings_list.iter()
                 .enumerate()
-                .map(|(i, mut e)| {
+                .map(|(i, e)| {
                     let previous = if i == 0 {
-                        concat_node
+                        concat_node.clone()
                     } else {
-                        no_siblings_list[i]
+                        no_siblings_list[i].clone()
                     };
 
                     e.previous = Some(previous.into());
@@ -272,10 +304,10 @@ fn to_nested_expr(
             Some(concat_node)
         },
         RegexExpr::Alt(list) => {
-            let mut alt_expr_node = ExprNode::new_leaf(Expr::Alt(vec![]), previous, parent);
+            let mut alt_expr_node = ExprNode::new_prev(Expr::Alt(vec![]), previous, parent);
 
             let list = list.iter()
-                .filter_map(|e| to_nested_expr(e, config, group_increment, Some(alt_expr_node), Some(alt_expr_node)))
+                .filter_map(|e| to_nested_expr(e, config, group_increment, Some(alt_expr_node.clone()), Some(alt_expr_node.clone())))
                 .collect();
 
             alt_expr_node.current = Expr::Alt(list);
@@ -304,21 +336,35 @@ fn to_nested_expr(
         } => {
             let range = hi - lo;
 
-            let expression = to_expr(child, config, group_increment);
-            let expression = if range > config.four_max_quantifier {
-                expression.map(|child| Expr::Repeat(Box::new(child)))
-            } else {
-                expression
-            };
+            let is_complex = range > config.four_max_quantifier || *lo != 0;
 
-            if *lo == 0 {
-                expression.map(|e| Expr::Optional(Box::new(e)))
-            } else {
-                expression
+            if !is_complex {
+                return to_nested_expr(child, config, group_increment, parent, previous);
             }
+
+            ExprNode::new_prev_consume_optional(|node| {
+                let repeat_node = if range > config.four_max_quantifier {
+                    ExprNode::new_prev_consume_optional(|node| {
+                        to_nested_expr(child.to_owned(), config, group_increment, Some(node.clone()), Some(node.clone()))
+                            .map(|x| Expr::Repeat(Box::new(x)))
+                    }, Some(node.clone()), Some(node.clone()))
+                } else {
+                    to_nested_expr(child, config, group_increment, Some(node.clone()), Some(node.clone()))
+                };
+
+                if repeat_node.is_none() {
+                    return None;
+                }
+                
+                if *lo == 0 {
+                   Some(Expr::Optional(Box::new(repeat_node.unwrap())))
+                } else {
+                    panic!("Should have been covered by is_complex case");
+                }
+            }, previous, parent)
         }
         // Delegates essentially forcibly match some string, so we can turn them into a token
-        RegexExpr::Delegate { inner, casei, .. } => Some(ExprNode::new_leaf(Expr::Token(if *casei {
+        RegexExpr::Delegate { inner, casei, .. } => Some(ExprNode::new_prev(Expr::Token(if *casei {
             Token::new_ignore_case(inner)
         } else {
             Token::new(inner)
@@ -344,10 +390,10 @@ fn to_nested_expr(
             true_branch,
             false_branch,
         } => {
-            let condition_parent = ExprNode::parented_dummy(parent, previous);
+            let mut condition_parent = ExprNode::parented_dummy(parent.clone(), previous.clone());
 
-            let true_branch = to_nested_expr(true_branch, config, group_increment, Some(condition_parent), Some(condition_parent));
-            let false_branch = to_nested_expr(false_branch, config, group_increment, Some(condition_parent), Some(condition_parent));
+            let true_branch = to_nested_expr(true_branch, config, group_increment, Some(condition_parent.clone()), Some(condition_parent.clone()));
+            let false_branch = to_nested_expr(false_branch, config, group_increment, Some(condition_parent.clone()), Some(condition_parent.clone()));
             if let (Some(true_branch), Some(false_branch)) = (true_branch, false_branch) {
                 let condition: Option<ExprConditional> = match condition.as_ref() {
                     &RegexExpr::BackrefExistsCondition(number) => {
