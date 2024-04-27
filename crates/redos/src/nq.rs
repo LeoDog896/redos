@@ -1,4 +1,4 @@
-use crate::ir::{Expr, IrAssertion};
+use crate::ir::{Expr, ExprNode, IrAssertion};
 
 /// Represents the result of an ILQ scan
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,11 +16,11 @@ impl NqReturn {
 
 /// Scans a regex tree for an nested quantifier 'vulnerability'.
 /// Assumes `expr` is the root expression of the tree.
-/// 
+///
 /// The regex must match the pattern (where t is arbitrary matchable tokens):
 /// t*(t*)*t+
-pub fn scan_nq(expr: &Expr) -> NqReturn {
-    match expr {
+pub fn scan_nq(expr: &ExprNode) -> NqReturn {
+    match &expr.current {
         Expr::Token(_) => NqReturn::new(false),
         Expr::Assertion(_) => NqReturn::new(false),
         Expr::Alt(list) => list.iter().fold(NqReturn::new(false), |acc, e| {
@@ -42,6 +42,6 @@ pub fn scan_nq(expr: &Expr) -> NqReturn {
     }
 }
 
-fn scan_concat(exprs: &Vec<Expr>) -> Expr {
+fn scan_concat(exprs: &Vec<ExprNode>) -> Expr {
     for expr in exprs {}
 }

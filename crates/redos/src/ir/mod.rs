@@ -1,11 +1,20 @@
 //! Intermediate representation of a regular expression.
 //! Used to simplify the AST and make it easier to work with.
 
-use std::{num::NonZeroUsize, rc::Rc};
+mod token;
+
+use token::Token;
+
+use std::{
+    num::NonZeroUsize,
+    rc::{Rc, Weak},
+};
 
 use fancy_regex::{Assertion, Expr as RegexExpr, LookAround};
 
 use crate::vulnerability::VulnerabilityConfig;
+
+use self::token::Value;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum IrAssertion {
@@ -23,7 +32,7 @@ pub enum IrAssertion {
     NotWordBoundary,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Clone)]
 pub enum ExprConditional {
     Condition(Box<ExprNode>),
     BackrefExistsCondition(usize),
@@ -33,17 +42,21 @@ fn option_rc<T>(option: Option<T>) -> Option<Rc<T>> {
     option.map(|x| Rc::new(x))
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Clone)]
 pub struct ExprNode {
-    current: Expr,
-    previous: Option<Rc<ExprNode>>,
-    next: Option<Rc<ExprNode>>,
-    parent: Option<Rc<ExprNode>>,
+    pub current: Expr,
+    pub previous: Option<Weak<ExprNode>>,
+    pub next: Option<Weak<ExprNode>>,
+    pub parent: Option<Rc<ExprNode>>,
 }
 
 impl ExprNode {
     /// Helper function that creates a new node for the IR generation
-    fn new_prev(current: Expr, previous: Option<Rc<ExprNode>>, parent: Option<Rc<ExprNode>>) -> ExprNode {
+    fn new_prev(
+        current: Expr,
+        previous: Option<Weak<ExprNode>>,
+        parent: Option<Rc<ExprNode>>,
+    ) -> ExprNode {
         ExprNode {
             current,
             previous,
@@ -56,16 +69,19 @@ impl ExprNode {
     /// allowing consuming itself to reparent its child expressions.
     fn new_prev_consume_optional<F>(
         current: F,
-        previous: Option<Rc<ExprNode>>,
+        previous: Option<Weak<ExprNode>>,
         parent: Option<Rc<ExprNode>>,
-    ) -> Option<ExprNode> where F: FnOnce(&ExprNode) -> Option<Expr> {
+    ) -> Option<ExprNode>
+    where
+        F: FnOnce(&ExprNode) -> Option<Expr>,
+    {
         // Here, we don't care about current; we are going to replace it
         let mut node = ExprNode::new_prev(Expr::Concat(vec![]), previous, parent);
 
         let child = current(&node);
 
         if child.is_none() {
-            return None
+            return None;
         }
 
         node.current = child.unwrap();
@@ -75,9 +91,12 @@ impl ExprNode {
 
     fn new_prev_consume<F>(
         current: F,
-        previous: Option<Rc<ExprNode>>,
-        parent: Option<Rc<ExprNode>>
-    ) -> ExprNode where F: FnOnce(&ExprNode) -> Expr {
+        previous: Option<Weak<ExprNode>>,
+        parent: Option<Rc<ExprNode>>,
+    ) -> ExprNode
+    where
+        F: FnOnce(&ExprNode) -> Expr,
+    {
         Self::new_prev_consume_optional(|x| Some(current(x)), previous, parent).unwrap()
     }
 
@@ -87,7 +106,7 @@ impl ExprNode {
             current: Expr::Token(Token {
                 yes: vec![],
                 no: vec![],
-                ignore_case: false
+                ignore_case: false,
             }),
             previous: None,
             next: None,
@@ -95,12 +114,12 @@ impl ExprNode {
         }
     }
 
-    fn parented_dummy(parent: Option<Rc<ExprNode>>, previous: Option<Rc<ExprNode>>) -> ExprNode {
+    fn parented_dummy(parent: Option<Rc<ExprNode>>, previous: Option<Weak<ExprNode>>) -> ExprNode {
         ExprNode {
             current: Expr::Token(Token {
                 yes: vec![],
                 no: vec![],
-                ignore_case: false
+                ignore_case: false,
             }),
             previous,
             next: None,
@@ -109,61 +128,24 @@ impl ExprNode {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Value {
-    Singular(String),
-    Range(String, String),
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Token {
-    /// Singular tokens that can be matched in this token
-    yes: Vec<Value>,
-    /// Singular tokens that can't be matched in this token
-    no: Vec<Value>,
-    /// Whether comparisons care about ignoring case
-    ignore_case: bool
-}
-
-impl Token {
-    /// Creates a new token.
-    /// Takes in a basic regex that is either a single character
-    /// or a character class.
-    fn new(regex: &str) -> Token {
-        Self::new_case(regex, false)
-    }
-
-    fn new_case(regex: &str, ignore_case: bool) -> Token {
-        if !(regex.contains('[') || regex.contains(']')) {
-            // This isn't a character class - just a single character
-            Token {
-                yes: vec![Value::Singular(regex.to_string())],
-                no: vec![],
-                ignore_case
-            }
-        } else {
-            unimplemented!("No support for parsing character classes yet.")
-        }
-    }
-
-    fn overlaps(&self, token: &Token) -> bool {
-        unimplemented!("Can not detect overlapping tokens yet.")
-    }
-}
-
 fn container<F>(
-    previous: Option<Rc<ExprNode>>,
+    previous: Option<Weak<ExprNode>>,
     parent: Option<Rc<ExprNode>>,
     group_increment: NonZeroUsize,
     config: &VulnerabilityConfig,
     expr: &RegexExpr,
-    gen: F
-) -> Option<ExprNode> where F: FnOnce(Option<ExprNode>) -> Expr {
+    gen: F,
+) -> Option<ExprNode>
+where
+    F: FnOnce(Option<ExprNode>) -> Expr,
+{
     let mut node = ExprNode::new_prev(
         Expr::Group(Box::new(ExprNode::dummy()), group_increment.into()),
         previous,
         parent,
     );
+
+    let rc = Rc::new(node.clone());
 
     let nest = to_nested_expr(
         expr,
@@ -171,8 +153,8 @@ fn container<F>(
         group_increment
             .checked_add(1)
             .expect("group increment overflow"),
-        Some(Rc::new(node.clone())), // TODO: expensive clone
-        Some(Rc::new(node.clone())),
+        Some(rc.clone()), // TODO: expensive clone
+        Some(Rc::downgrade(&rc)),
     );
 
     if nest.is_none() {
@@ -183,7 +165,7 @@ fn container<F>(
 
     Some(node)
 }
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     /// Some token, whether its a character class, any character, etc.
     Token(Token),
@@ -224,12 +206,72 @@ pub enum Expr {
 }
 
 pub fn to_expr(expr: &RegexExpr, config: &VulnerabilityConfig) -> Option<ExprNode> {
-    to_nested_expr(expr, config, nonzero_lit::usize!(1), None, None)
-        .map(normalize)
+    let expr = to_nested_expr(expr, config, nonzero_lit::usize!(1), None, None);
+
+    if expr.is_none() {
+        return None;
+    }
+
+    let expr = expr.unwrap();
+
+    // // set all `next` pointers
+    // walk_owned(expr.clone(), |e| {
+    //     if let Some(prev) = e.previous.clone() {
+    //         if let Some(prev) = prev.upgrade() {
+    //             prev.next = Some(Rc::downgrade(&Rc::new(e.clone())));
+    //         }
+    //     }
+    // });
+
+    Some(expr)
 }
 
-fn normalize(expr: ExprNode) -> ExprNode {
-    expr
+fn walk_owned<F>(expr: ExprNode, mut f: F)
+where
+    F: FnMut(ExprNode),
+{
+    f(expr.clone());
+
+    match expr.current {
+        Expr::Concat(list) => {
+            for e in list {
+                walk_owned(e, &mut f);
+            }
+        }
+        Expr::Alt(list) => {
+            for e in list {
+                walk_owned(e, &mut f);
+            }
+        }
+        Expr::Group(e, _) => {
+            walk_owned(*e, &mut f);
+        }
+        Expr::LookAround(e, _) => {
+            walk_owned(*e, &mut f);
+        }
+        Expr::AtomicGroup(e) => {
+            walk_owned(*e, &mut f);
+        }
+        Expr::Optional(e) => {
+            walk_owned(*e, &mut f);
+        }
+        Expr::Repeat(e) => {
+            walk_owned(*e, &mut f);
+        }
+        Expr::Conditional {
+            true_branch,
+            false_branch,
+            condition,
+        } => {
+            walk_owned(*true_branch, &mut f);
+            walk_owned(*false_branch, &mut f);
+
+            if let ExprConditional::Condition(e) = condition {
+                walk_owned(*e, &mut f);
+            }
+        }
+        _ => {}
+    }
 }
 
 fn to_nested_expr(
@@ -237,7 +279,7 @@ fn to_nested_expr(
     config: &VulnerabilityConfig,
     group_increment: NonZeroUsize,
     parent: Option<Rc<ExprNode>>,
-    previous: Option<Rc<ExprNode>>,
+    previous: Option<Weak<ExprNode>>,
 ) -> Option<ExprNode> {
     match expr {
         RegexExpr::Empty => None,
@@ -248,7 +290,7 @@ fn to_nested_expr(
                 Token {
                     yes: vec![Value::Singular(".".to_string())],
                     no: vec![Value::Singular("\\n".to_string())],
-                    ignore_case: false
+                    ignore_case: false,
                 }
             }),
             previous,
@@ -281,62 +323,88 @@ fn to_nested_expr(
             parent,
         )),
         // TODO: propagate group increment
-        RegexExpr::Concat(list) => ExprNode::new_prev_consume_optional(|parent| {
-            let no_siblings_list = list.iter()
-                .filter_map(|e| to_nested_expr(e, config, group_increment, Some(Rc::new(parent.clone())), None))
-                .collect::<Vec<_>>();
+        RegexExpr::Concat(list) => ExprNode::new_prev_consume_optional(
+            |parent| {
+                let no_siblings_list = list
+                    .iter()
+                    .filter_map(|e| {
+                        to_nested_expr(
+                            e,
+                            config,
+                            group_increment,
+                            Some(Rc::new(parent.clone())),
+                            None,
+                        )
+                    })
+                    .collect::<Vec<_>>();
 
-            let nodes = no_siblings_list.iter()
-                .enumerate()
-                .map(|(i, e)| {
-                    let previous = if i == 0 {
-                        parent.clone()
-                    } else {
-                        no_siblings_list[i].clone()
-                    };
+                let nodes = no_siblings_list
+                    .iter()
+                    .enumerate()
+                    .map(|(i, e)| {
+                        let previous = if i == 0 {
+                            parent.clone()
+                        } else {
+                            no_siblings_list[i].clone()
+                        };
 
-                    let e = e.clone();
+                        let e = e.clone();
 
-                    ExprNode {
-                        current: e.current,
-                        previous: Some(previous.into()),
-                        next: e.next,
-                        parent: e.parent,
-                    }
-                })
-                .collect::<Vec<_>>();
+                        ExprNode {
+                            current: e.current,
+                            previous: Some(Rc::downgrade(&Rc::new(previous))),
+                            next: e.next,
+                            parent: e.parent,
+                        }
+                    })
+                    .collect::<Vec<_>>();
 
-            if nodes.is_empty() {
-                return None;
-            }
+                if nodes.is_empty() {
+                    return None;
+                }
 
-            Some(Expr::Concat(nodes))
-        }, previous, parent),
-        RegexExpr::Alt(list) => {
-            let mut alt_expr_node = ExprNode::new_prev(Expr::Alt(vec![]), previous, parent);
+                Some(Expr::Concat(nodes))
+            },
+            previous,
+            parent,
+        ),
+        RegexExpr::Alt(list) => ExprNode::new_prev_consume_optional(
+            |x| {
+                Some(Expr::Alt(
+                    list.iter()
+                        .filter_map(|e| {
+                            let rc = Rc::new(x.clone());
 
-            let list = list.iter()
-                .filter_map(|e| to_nested_expr(e, config, group_increment, Some(Rc::new(alt_expr_node.clone())), Some(Rc::new(alt_expr_node.clone()))))
-                .collect();
-
-            alt_expr_node.current = Expr::Alt(list);
-
-            Some(alt_expr_node)
-        },
-        RegexExpr::Group(e) => {
-            container(previous, parent, group_increment, config, e, |tree: Option<ExprNode>| {
-                Expr::Group(
-                    Box::new(tree.unwrap()), group_increment.into()
-                )
-            })
-        }
-        RegexExpr::LookAround(e, la) => {
-            container(previous, parent, group_increment, config, e, |tree: Option<ExprNode>| {
-                Expr::LookAround(
-                    Box::new(tree.unwrap()), *la
-                )
-            })
-        }
+                            to_nested_expr(
+                                e,
+                                config,
+                                group_increment,
+                                Some(rc.clone()),
+                                Some(Rc::downgrade(&rc)),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                ))
+            },
+            previous,
+            parent,
+        ),
+        RegexExpr::Group(e) => container(
+            previous,
+            parent,
+            group_increment,
+            config,
+            e,
+            |tree: Option<ExprNode>| Expr::Group(Box::new(tree.unwrap()), group_increment.into()),
+        ),
+        RegexExpr::LookAround(e, la) => container(
+            previous,
+            parent,
+            group_increment,
+            config,
+            e,
+            |tree: Option<ExprNode>| Expr::LookAround(Box::new(tree.unwrap()), *la),
+        ),
         RegexExpr::Repeat {
             child,
             lo,
@@ -351,44 +419,71 @@ fn to_nested_expr(
                 return to_nested_expr(child, config, group_increment, parent, previous);
             }
 
-            ExprNode::new_prev_consume_optional(|node| {
-                let repeat_node = if range > config.four_max_quantifier {
-                    ExprNode::new_prev_consume_optional(|node| {
-                        to_nested_expr(child.to_owned(), config, group_increment, Some(Rc::new(node.clone())), Some(Rc::new(node.clone())))
-                            .map(|x| Expr::Repeat(Box::new(x)))
-                    }, Some(Rc::new(node.clone())), Some(Rc::new(node.clone())))
-                } else {
-                    to_nested_expr(child, config, group_increment, Some(Rc::new(node.clone())), Some(Rc::new(node.clone())))
-                };
+            ExprNode::new_prev_consume_optional(
+                |node| {
+                    let rc = Rc::new(node.clone());
+                    let repeat_node = if range > config.four_max_quantifier {
+                        ExprNode::new_prev_consume_optional(
+                            |node| {
+                                let rc = Rc::new(node.clone());
+                                to_nested_expr(
+                                    child.to_owned(),
+                                    config,
+                                    group_increment,
+                                    Some(rc.clone()),
+                                    Some(Rc::downgrade(&rc)),
+                                )
+                                .map(|x| Expr::Repeat(Box::new(x)))
+                            },
+                            Some(Rc::downgrade(&rc)),
+                            Some(rc),
+                        )
+                    } else {
+                        to_nested_expr(
+                            child,
+                            config,
+                            group_increment,
+                            Some(rc.clone()),
+                            Some(Rc::downgrade(&rc)),
+                        )
+                    };
 
-                if repeat_node.is_none() {
-                    return None;
-                }
-                
-                if *lo == 0 {
-                   Some(Expr::Optional(Box::new(repeat_node.unwrap())))
-                } else {
-                    panic!("Should have been covered by is_complex case");
-                }
-            }, previous, parent)
+                    if repeat_node.is_none() {
+                        return None;
+                    }
+
+                    if *lo == 0 {
+                        Some(Expr::Optional(Box::new(repeat_node.unwrap())))
+                    } else {
+                        panic!("Should have been covered by is_complex case");
+                    }
+                },
+                previous,
+                parent,
+            )
         }
         // Delegates essentially forcibly match some string, so we can turn them into a token
-        RegexExpr::Delegate { inner, casei, .. } => Some(ExprNode::new_prev(Expr::Token(if *casei {
-            Token::new_case(inner, true)
-        } else {
-            Token::new(inner)
-        }), previous, parent)),
+        RegexExpr::Delegate { inner, casei, .. } => Some(ExprNode::new_prev(
+            Expr::Token(if *casei {
+                Token::new_case(inner, true)
+            } else {
+                Token::new(inner)
+            }),
+            previous,
+            parent,
+        )),
         // note that since we convert backrefs to tokens, the complexity of a vulnerability
         // may underestimate the actual complexity, though this will not cause
         // false negatives
         RegexExpr::Backref(_) => unimplemented!("Backrefs are not supported yet."),
-        RegexExpr::AtomicGroup(e) => {
-            container(previous, parent, group_increment, config, e, |tree: Option<ExprNode>| {
-                Expr::AtomicGroup(
-                    Box::new(tree.unwrap())
-                )
-            })
-        }
+        RegexExpr::AtomicGroup(e) => container(
+            previous,
+            parent,
+            group_increment,
+            config,
+            e,
+            |tree: Option<ExprNode>| Expr::AtomicGroup(Box::new(tree.unwrap())),
+        ),
         RegexExpr::KeepOut => unimplemented!("Keep out not supported."),
         RegexExpr::ContinueFromPreviousMatchEnd => {
             unimplemented!("Continue from previous match end not supported.")
@@ -400,9 +495,22 @@ fn to_nested_expr(
             false_branch,
         } => {
             let mut condition_parent = ExprNode::parented_dummy(parent.clone(), previous.clone());
+            let condition_parent_rc = Rc::new(condition_parent.clone());
 
-            let true_branch = to_nested_expr(true_branch, config, group_increment, Some(Rc::new(condition_parent.clone())), Some(Rc::new(condition_parent.clone())));
-            let false_branch = to_nested_expr(false_branch, config, group_increment, Some(Rc::new(condition_parent.clone())), Some(Rc::new(condition_parent.clone())));
+            let true_branch = to_nested_expr(
+                true_branch,
+                config,
+                group_increment,
+                Some(condition_parent_rc.clone()),
+                Some(Rc::downgrade(&condition_parent_rc.clone())),
+            );
+            let false_branch = to_nested_expr(
+                false_branch,
+                config,
+                group_increment,
+                Some(condition_parent_rc.clone()),
+                Some(Rc::downgrade(&condition_parent_rc.clone())),
+            );
             if let (Some(true_branch), Some(false_branch)) = (true_branch, false_branch) {
                 let condition: Option<ExprConditional> = match condition.as_ref() {
                     &RegexExpr::BackrefExistsCondition(number) => {

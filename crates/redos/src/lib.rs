@@ -6,7 +6,7 @@ mod nq;
 
 use fancy_regex::parse::Parser;
 use fancy_regex::Expr as RegexExpr;
-use ir::{to_expr, Expr, ExprConditional};
+use ir::{to_expr, Expr, ExprConditional, ExprNode};
 use vulnerability::{Vulnerability, VulnerabilityConfig};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,13 +37,13 @@ impl RegexInfo {
 /// - It must contain a repeat
 /// - The repeat must have a bound size greater than `config.second_max_quantifier`
 /// - The regex must have a terminating state (to allow for backtracking) (TODO: this is not implemented yet)
-fn regex_pre_scan(expr: &Expr) -> RegexInfo {
-    match expr {
+fn regex_pre_scan(expr: &ExprNode) -> RegexInfo {
+    match &expr.current {
         // even though there is a repeat, since it is the root node,
         // we must dig deeper to see if the repeat does matter,
         // since else this will violate our terminating state criteria
         Expr::Repeat(expr) => regex_pre_scan(expr.as_ref()),
-        Expr::Token => RegexInfo::empty(),
+        Expr::Token(_) => RegexInfo::empty(),
         Expr::Assertion(_) => RegexInfo::empty(),
 
         // propagate
@@ -91,15 +91,15 @@ fn regex_pre_scan(expr: &Expr) -> RegexInfo {
     }
 }
 
-fn regex_pre_scan_nested(expr: &Expr) -> RegexInfo {
-    match expr {
+fn regex_pre_scan_nested(expr: &ExprNode) -> RegexInfo {
+    match &expr.current {
         Expr::Repeat(_) => RegexInfo {
             has_repeat: true,
             has_alternation: false,
         },
 
         // no nested expressions
-        Expr::Token => RegexInfo::empty(),
+        Expr::Token(_) => RegexInfo::empty(),
         Expr::Assertion(_) => RegexInfo::empty(),
 
         // propagate
@@ -165,7 +165,7 @@ pub fn vulnerabilities(
     }
 
     // second pass: turn AST into IR
-    let expr = match to_expr(&tree.expr, config, nonzero_lit::usize!(1)) {
+    let expr = match to_expr(&tree.expr, config) {
         Some(expr) => expr,
         None => {
             return Ok(VulnerabilityResult {
