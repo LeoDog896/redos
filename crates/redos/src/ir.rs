@@ -60,10 +60,7 @@ impl ExprNode {
         parent: Option<ExprNode>,
     ) -> Option<ExprNode> where F: FnOnce(&ExprNode) -> Option<Expr> {
         // Here, we don't care about current; we are going to replace it
-        let mut node = ExprNode::new_prev(Expr::Token(Token {
-            yes: vec![],
-            no: vec![],
-        }), previous, parent);
+        let mut node = ExprNode::new_prev(Expr::Concat(vec![]), previous, parent);
 
         let child = current(&node);
 
@@ -90,6 +87,7 @@ impl ExprNode {
             current: Expr::Token(Token {
                 yes: vec![],
                 no: vec![],
+                ignore_case: false
             }),
             previous: None,
             next: None,
@@ -102,6 +100,7 @@ impl ExprNode {
             current: Expr::Token(Token {
                 yes: vec![],
                 no: vec![],
+                ignore_case: false
             }),
             previous: option_rc(previous),
             next: None,
@@ -122,6 +121,8 @@ pub struct Token {
     yes: Vec<Value>,
     /// Singular tokens that can't be matched in this token
     no: Vec<Value>,
+    /// Whether comparisons care about ignoring case
+    ignore_case: bool
 }
 
 impl Token {
@@ -129,19 +130,20 @@ impl Token {
     /// Takes in a basic regex that is either a single character
     /// or a character class.
     fn new(regex: &str) -> Token {
+        Self::new_case(regex, false)
+    }
+
+    fn new_case(regex: &str, ignore_case: bool) -> Token {
         if !(regex.contains('[') || regex.contains(']')) {
             // This isn't a character class - just a single character
             Token {
                 yes: vec![Value::Singular(regex.to_string())],
                 no: vec![],
+                ignore_case
             }
         } else {
             unimplemented!("No support for parsing character classes yet.")
         }
-    }
-
-    fn new_ignore_case(regex: &str) -> Token {
-        unimplemented!("Can not ignore case when creating tokens yet.")
     }
 
     fn overlaps(&self, token: &Token) -> bool {
@@ -223,6 +225,11 @@ pub enum Expr {
 
 pub fn to_expr(expr: &RegexExpr, config: &VulnerabilityConfig) -> Option<ExprNode> {
     to_nested_expr(expr, config, nonzero_lit::usize!(1), None, None)
+        .map(normalize)
+}
+
+fn normalize(expr: ExprNode) -> ExprNode {
+    expr
 }
 
 fn to_nested_expr(
@@ -241,6 +248,7 @@ fn to_nested_expr(
                 Token {
                     yes: vec![Value::Singular(".".to_string())],
                     no: vec![Value::Singular("\\n".to_string())],
+                    ignore_case: false
                 }
             }),
             previous,
@@ -265,7 +273,7 @@ fn to_nested_expr(
         )),
         RegexExpr::Literal { casei, val } => Some(ExprNode::new_prev(
             Expr::Token(if *casei {
-                Token::new_ignore_case(val)
+                Token::new_case(val, true)
             } else {
                 Token::new(val)
             }),
@@ -273,25 +281,28 @@ fn to_nested_expr(
             parent,
         )),
         // TODO: propagate group increment
-        RegexExpr::Concat(list) => {
-            let mut concat_node = ExprNode::new_prev(Expr::Concat(vec![]), previous, parent);
-
+        RegexExpr::Concat(list) => ExprNode::new_prev_consume_optional(|parent| {
             let no_siblings_list = list.iter()
-                .filter_map(|e| to_nested_expr(e, config, group_increment, Some(concat_node.clone()), None))
+                .filter_map(|e| to_nested_expr(e, config, group_increment, Some(parent.clone()), None))
                 .collect::<Vec<_>>();
 
             let nodes = no_siblings_list.iter()
                 .enumerate()
                 .map(|(i, e)| {
                     let previous = if i == 0 {
-                        concat_node.clone()
+                        parent.clone()
                     } else {
                         no_siblings_list[i].clone()
                     };
 
-                    e.previous = Some(previous.into());
+                    let e = e.clone();
 
-                    *e
+                    ExprNode {
+                        current: e.current,
+                        previous: Some(previous.into()),
+                        next: e.next,
+                        parent: e.parent,
+                    }
                 })
                 .collect::<Vec<_>>();
 
@@ -299,10 +310,8 @@ fn to_nested_expr(
                 return None;
             }
 
-            concat_node.current = Expr::Concat(nodes);
-
-            Some(concat_node)
-        },
+            Some(Expr::Concat(nodes))
+        }, previous, parent),
         RegexExpr::Alt(list) => {
             let mut alt_expr_node = ExprNode::new_prev(Expr::Alt(vec![]), previous, parent);
 
@@ -365,7 +374,7 @@ fn to_nested_expr(
         }
         // Delegates essentially forcibly match some string, so we can turn them into a token
         RegexExpr::Delegate { inner, casei, .. } => Some(ExprNode::new_prev(Expr::Token(if *casei {
-            Token::new_ignore_case(inner)
+            Token::new_case(inner, true)
         } else {
             Token::new(inner)
         }), previous, parent)),

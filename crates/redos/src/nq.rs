@@ -21,7 +21,7 @@ impl NqReturn {
 /// t*(t*)*t+
 pub fn scan_nq(expr: &Expr) -> NqReturn {
     match expr {
-        Expr::Token => NqReturn::new(false),
+        Expr::Token(_) => NqReturn::new(false),
         Expr::Assertion(_) => NqReturn::new(false),
         Expr::Alt(list) => list.iter().fold(NqReturn::new(false), |acc, e| {
             if acc.is_present {

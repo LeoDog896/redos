@@ -22,7 +22,7 @@ impl IlqReturn {
 pub fn scan_ilq(expr: &Expr) -> IlqReturn {
     match expr {
         // if we hit anything that isn't a Vec<Expr>, we're done
-        Expr::Token => IlqReturn::new(false),
+        Expr::Token(_) => IlqReturn::new(false),
         Expr::Assertion(_) => IlqReturn::new(false),
 
         // hit an alternation? scan_ilq on the children; we can simply pretend
