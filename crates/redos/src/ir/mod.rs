@@ -82,8 +82,7 @@ impl ExprNode {
     {
         // Here, we don't care about current; we are going to replace it
         let mut node = ExprNode::new_prev(Expr::Concat(vec![]), previous, parent);
-
-        // TODO: expensive clone
+        
         let child = current(Rc::downgrade(&Rc::new(node.clone())));
 
         if child.is_none() {
@@ -343,6 +342,7 @@ fn to_nested_expr(
                             None,
                         )
                     })
+                    .map(Rc::new)
                     .collect::<Vec<_>>();
 
                 let nodes = no_siblings_list
@@ -352,18 +352,14 @@ fn to_nested_expr(
                         let previous = if i == 0 {
                             parent.clone()
                         } else {
-                            // TODO: expensive clone
-                            Rc::downgrade(&Rc::new(no_siblings_list[i].clone()))
+                            Rc::downgrade(&no_siblings_list[i].clone())
                         };
 
-                        // TODO: expensive clone
-                        let e = e.clone();
-
                         ExprNode {
-                            current: e.current,
+                            current: e.current.clone(),
                             previous: Some(previous),
-                            next: e.next,
-                            parent: e.parent,
+                            next: e.next.clone(),
+                            parent: e.parent.clone(),
                         }
                     })
                     .map(Rc::new)
@@ -499,31 +495,27 @@ fn to_nested_expr(
             condition,
             true_branch,
             false_branch,
-        } => {
-            let mut condition_parent = ExprNode::parented_dummy(parent.clone(), previous.clone());
-            // TODO: expensive clone
-            let condition_parent_rc = Rc::new(condition_parent.clone());
-
+        } => ExprNode::new_prev_consume_optional(|x| {
             let true_branch = to_nested_expr(
                 true_branch,
                 config,
                 group_increment,
-                Some(Rc::downgrade(&condition_parent_rc)),
-                Some(Rc::downgrade(&condition_parent_rc)),
+                Some(x.clone()),
+                Some(x.clone()),
             );
             let false_branch = to_nested_expr(
                 false_branch,
                 config,
                 group_increment,
-                Some(Rc::downgrade(&condition_parent_rc)),
-                Some(Rc::downgrade(&condition_parent_rc.clone())),
+                Some(x.clone()),
+                Some(x.clone()),
             );
             if let (Some(true_branch), Some(false_branch)) = (true_branch, false_branch) {
                 let condition: Option<ExprConditional> = match condition.as_ref() {
                     &RegexExpr::BackrefExistsCondition(number) => {
                         Some(ExprConditional::BackrefExistsCondition(number))
                     }
-                    expr => to_nested_expr(expr, config, group_increment, parent, previous)
+                    expr => to_nested_expr(expr, config, group_increment, Some(x.clone()), Some(x.clone()))
                         .map(|x| ExprConditional::Condition(Rc::new(x))),
                 };
 
@@ -533,16 +525,10 @@ fn to_nested_expr(
                     false_branch: Rc::new(false_branch),
                 });
 
-                if condition.is_none() {
-                    return None;
-                }
-
-                condition_parent.current = condition.unwrap();
-
-                Some(condition_parent)
+                condition
             } else {
                 return None;
             }
-        }
+        }, previous, parent)
     }
 }
