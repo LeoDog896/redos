@@ -6,7 +6,9 @@ mod token;
 use token::Token;
 
 use std::{
-    cell::RefCell, num::NonZeroUsize, rc::{Rc, Weak}
+    cell::RefCell,
+    num::NonZeroUsize,
+    rc::{Rc, Weak},
 };
 
 use fancy_regex::{Assertion, Expr as RegexExpr, LookAround};
@@ -82,7 +84,7 @@ impl ExprNode {
     {
         // Here, we don't care about current; we are going to replace it
         let mut node = ExprNode::new_prev(Expr::Concat(vec![]), previous, parent);
-        
+
         let child = current(Rc::downgrade(&Rc::new(node.clone())));
 
         if child.is_none() {
@@ -119,7 +121,10 @@ impl ExprNode {
         }
     }
 
-    fn parented_dummy(parent: Option<WeakLink<ExprNode>>, previous: Option<WeakLink<ExprNode>>) -> ExprNode {
+    fn parented_dummy(
+        parent: Option<WeakLink<ExprNode>>,
+        previous: Option<WeakLink<ExprNode>>,
+    ) -> ExprNode {
         ExprNode {
             current: Expr::Token(Token {
                 yes: vec![],
@@ -334,13 +339,7 @@ fn to_nested_expr(
                 let no_siblings_list = list
                     .iter()
                     .filter_map(|e| {
-                        to_nested_expr(
-                            e,
-                            config,
-                            group_increment,
-                            Some(parent.clone()),
-                            None,
-                        )
+                        to_nested_expr(e, config, group_increment, Some(parent.clone()), None)
                     })
                     .map(Rc::new)
                     .collect::<Vec<_>>();
@@ -385,7 +384,8 @@ fn to_nested_expr(
                                 group_increment,
                                 Some(x.clone()),
                                 Some(x.clone()),
-                            ).map(Rc::new)
+                            )
+                            .map(Rc::new)
                         })
                         .collect::<Vec<_>>(),
                 ))
@@ -495,40 +495,50 @@ fn to_nested_expr(
             condition,
             true_branch,
             false_branch,
-        } => ExprNode::new_prev_consume_optional(|x| {
-            let true_branch = to_nested_expr(
-                true_branch,
-                config,
-                group_increment,
-                Some(x.clone()),
-                Some(x.clone()),
-            );
-            let false_branch = to_nested_expr(
-                false_branch,
-                config,
-                group_increment,
-                Some(x.clone()),
-                Some(x.clone()),
-            );
-            if let (Some(true_branch), Some(false_branch)) = (true_branch, false_branch) {
-                let condition: Option<ExprConditional> = match condition.as_ref() {
-                    &RegexExpr::BackrefExistsCondition(number) => {
-                        Some(ExprConditional::BackrefExistsCondition(number))
-                    }
-                    expr => to_nested_expr(expr, config, group_increment, Some(x.clone()), Some(x.clone()))
+        } => ExprNode::new_prev_consume_optional(
+            |x| {
+                let true_branch = to_nested_expr(
+                    true_branch,
+                    config,
+                    group_increment,
+                    Some(x.clone()),
+                    Some(x.clone()),
+                );
+                let false_branch = to_nested_expr(
+                    false_branch,
+                    config,
+                    group_increment,
+                    Some(x.clone()),
+                    Some(x.clone()),
+                );
+                if let (Some(true_branch), Some(false_branch)) = (true_branch, false_branch) {
+                    let condition: Option<ExprConditional> = match condition.as_ref() {
+                        &RegexExpr::BackrefExistsCondition(number) => {
+                            Some(ExprConditional::BackrefExistsCondition(number))
+                        }
+                        expr => to_nested_expr(
+                            expr,
+                            config,
+                            group_increment,
+                            Some(x.clone()),
+                            Some(x.clone()),
+                        )
                         .map(|x| ExprConditional::Condition(Rc::new(x))),
-                };
+                    };
 
-                let condition = condition.map(|condition| Expr::Conditional {
-                    condition,
-                    true_branch: Rc::new(true_branch),
-                    false_branch: Rc::new(false_branch),
-                });
+                    let condition = condition.map(|condition| Expr::Conditional {
+                        condition,
+                        true_branch: Rc::new(true_branch),
+                        false_branch: Rc::new(false_branch),
+                    });
 
-                condition
-            } else {
-                return None;
-            }
-        }, previous, parent)
+                    condition
+                } else {
+                    return None;
+                }
+            },
+            previous,
+            parent,
+        ),
     }
 }

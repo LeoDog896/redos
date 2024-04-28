@@ -2,7 +2,7 @@
 pub enum Value {
     Singular(String),
     Range(String, String),
-    Any
+    Any,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
