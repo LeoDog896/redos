@@ -2,6 +2,7 @@
 pub enum Value {
     Singular(String),
     Range(String, String),
+    Any
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -23,8 +24,8 @@ impl Token {
     }
 
     pub fn new_case(regex: &str, ignore_case: bool) -> Token {
-        if !(regex.contains('[') || regex.contains(']')) {
-            // This isn't a character class - just a single character
+        // This isn't a character class - just some single yes value
+        if !regex.contains('[') || regex.len() == 1 {
             Token {
                 yes: vec![Value::Singular(regex.to_string())],
                 no: vec![],
