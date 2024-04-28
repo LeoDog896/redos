@@ -78,12 +78,13 @@ impl ExprNode {
         parent: Option<WeakLink<ExprNode>>,
     ) -> Option<ExprNode>
     where
-        F: FnOnce(&ExprNode) -> Option<Expr>,
+        F: FnOnce(WeakLink<ExprNode>) -> Option<Expr>,
     {
         // Here, we don't care about current; we are going to replace it
         let mut node = ExprNode::new_prev(Expr::Concat(vec![]), previous, parent);
 
-        let child = current(&node);
+        // TODO: expensive clone
+        let child = current(Rc::downgrade(&Rc::new(node.clone())));
 
         if child.is_none() {
             return None;
@@ -100,7 +101,7 @@ impl ExprNode {
         parent: Option<WeakLink<ExprNode>>,
     ) -> ExprNode
     where
-        F: FnOnce(&ExprNode) -> Expr,
+        F: FnOnce(WeakLink<ExprNode>) -> Expr,
     {
         Self::new_prev_consume_optional(|x| Some(current(x)), previous, parent).unwrap()
     }
@@ -338,7 +339,7 @@ fn to_nested_expr(
                             e,
                             config,
                             group_increment,
-                            Some(Rc::downgrade(&Rc::new(parent.clone()))),
+                            Some(parent.clone()),
                             None,
                         )
                     })
@@ -351,14 +352,16 @@ fn to_nested_expr(
                         let previous = if i == 0 {
                             parent.clone()
                         } else {
-                            no_siblings_list[i].clone()
+                            // TODO: expensive clone
+                            Rc::downgrade(&Rc::new(no_siblings_list[i].clone()))
                         };
 
+                        // TODO: expensive clone
                         let e = e.clone();
 
                         ExprNode {
                             current: e.current,
-                            previous: Some(Rc::downgrade(&Rc::new(previous))),
+                            previous: Some(previous),
                             next: e.next,
                             parent: e.parent,
                         }
@@ -380,14 +383,12 @@ fn to_nested_expr(
                 Some(Expr::Alt(
                     list.iter()
                         .filter_map(|e| {
-                            let rc = Rc::new(x.clone());
-
                             to_nested_expr(
                                 e,
                                 config,
                                 group_increment,
-                                Some(Rc::downgrade(&rc)),
-                                Some(Rc::downgrade(&rc)),
+                                Some(x.clone()),
+                                Some(x.clone()),
                             ).map(Rc::new)
                         })
                         .collect::<Vec<_>>(),
@@ -428,30 +429,28 @@ fn to_nested_expr(
 
             ExprNode::new_prev_consume_optional(
                 |node| {
-                    let rc = Rc::new(node.clone());
                     let repeat_node = if range > config.four_max_quantifier {
                         ExprNode::new_prev_consume_optional(
                             |node| {
-                                let rc = Rc::new(node.clone());
                                 to_nested_expr(
                                     child.to_owned(),
                                     config,
                                     group_increment,
-                                    Some(Rc::downgrade(&rc)),
-                                    Some(Rc::downgrade(&rc)),
+                                    Some(node.clone()),
+                                    Some(node.clone()),
                                 )
                                 .map(|x| Expr::Repeat(Rc::new(x)))
                             },
-                            Some(Rc::downgrade(&rc)),
-                            Some(Rc::downgrade(&rc)),
+                            Some(node.clone()),
+                            Some(node.clone()),
                         )
                     } else {
                         to_nested_expr(
                             child,
                             config,
                             group_increment,
-                            Some(Rc::downgrade(&rc)),
-                            Some(Rc::downgrade(&rc)),
+                            Some(node.clone()),
+                            Some(node.clone()),
                         )
                     };
 
@@ -502,6 +501,7 @@ fn to_nested_expr(
             false_branch,
         } => {
             let mut condition_parent = ExprNode::parented_dummy(parent.clone(), previous.clone());
+            // TODO: expensive clone
             let condition_parent_rc = Rc::new(condition_parent.clone());
 
             let true_branch = to_nested_expr(
