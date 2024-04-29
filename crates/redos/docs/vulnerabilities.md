@@ -48,7 +48,7 @@ Complexity: `O(n^2)` (polynomial)
 ### Initial Large Quantifier
 
 - A quantifier is present in the regex with a substantial upper bound
-- The token that the quantifier is attatched to can be reached as the first token in the regex
+- The token that the quantifier is attached to can be reached as the first token in the regex
 
 Small example: `a+$`
 
