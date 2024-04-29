@@ -54,7 +54,7 @@ pub fn scan_ilq(expr: Rc<ExprNode>) -> IlqReturn {
             // Once we hit a required token with repetition, we need to finally make sure there exists
             // a required token.
 
-            scan_ilq_concat(&list)
+            scan_ilq_concat(list)
         }
         Expr::Group(e, _) => scan_ilq(e.clone()),
 
@@ -77,34 +77,34 @@ enum ConcatResults {
 }
 
 fn scan_ilq_concat(exprs: &Vec<Rc<ExprNode>>) -> IlqReturn {
-    // first, lets try to hit a repeat token
-    for expr in exprs {
-        let result: ConcatResults = match expr {
-            Expr::Token(_) => ConcatResults::HitRequiredToken,
-            Expr::Assertion(assertion) => match assertion {
-                IrAssertion::Start => ConcatResults::HitRequiredToken,
-                IrAssertion::End => ConcatResults::HitRequiredToken,
-                IrAssertion::WordBoundary => ConcatResults::HitRequiredToken,
-                // since this is 'not' a word boundary,
-                // it isn't a required token, so we can continue with our search
-                IrAssertion::NotWordBoundary => ConcatResults::Continue,
-                IrAssertion::LeftWordBoundary => ConcatResults::HitRequiredToken,
-                IrAssertion::RightWordBoundary => ConcatResults::HitRequiredToken,
-            },
-            Expr::Alt(list) => (),
-            Expr::Optional(_) => (),
-            Expr::Conditional { false_branch, .. } => (),
+    // // first, lets try to hit a repeat token
+    // for expr in exprs {
+    //     let result: ConcatResults = match expr {
+    //         Expr::Token(_) => ConcatResults::HitRequiredToken,
+    //         Expr::Assertion(assertion) => match assertion {
+    //             IrAssertion::Start => ConcatResults::HitRequiredToken,
+    //             IrAssertion::End => ConcatResults::HitRequiredToken,
+    //             IrAssertion::WordBoundary => ConcatResults::HitRequiredToken,
+    //             // since this is 'not' a word boundary,
+    //             // it isn't a required token, so we can continue with our search
+    //             IrAssertion::NotWordBoundary => ConcatResults::Continue,
+    //             IrAssertion::LeftWordBoundary => ConcatResults::HitRequiredToken,
+    //             IrAssertion::RightWordBoundary => ConcatResults::HitRequiredToken,
+    //         },
+    //         Expr::Alt(list) => (),
+    //         Expr::Optional(_) => (),
+    //         Expr::Conditional { false_branch, .. } => (),
 
-            Expr::Concat(list) => (),
+    //         Expr::Concat(list) => (),
 
-            // We encountered one!
-            Expr::Repeat(e) => (),
+    //         // We encountered one!
+    //         Expr::Repeat(e) => (),
 
-            Expr::Group(e, _) => (),
-            Expr::LookAround(e, _) => (),
-            Expr::AtomicGroup(e) => (),
-        };
-    }
+    //         Expr::Group(e, _) => (),
+    //         Expr::LookAround(e, _) => (),
+    //         Expr::AtomicGroup(e) => (),
+    //     };
+    // }
 
     // TODO: implement this
     IlqReturn::new(false)

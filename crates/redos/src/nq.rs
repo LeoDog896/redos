@@ -74,5 +74,5 @@ fn scan_concat(expr: &Rc<ExprNode>) -> NqReturn {
         never_ancestor_type_sandwich = Optional
     );
 
-    return NqReturn::new(final_token.is_some());
+    NqReturn::new(final_token.is_some())
 }

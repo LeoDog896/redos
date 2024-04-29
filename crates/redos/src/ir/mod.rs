@@ -230,7 +230,7 @@ where
 {
     f(expr.clone());
 
-    match &(*expr).current {
+    match &expr.current {
         Expr::Concat(list) => {
             for e in list {
                 walk_unordered(e, &mut f);
@@ -558,13 +558,9 @@ fn to_nested_expr(
                             Some(node.clone()),
                         )
                     };
-
-                    if repeat_node.is_none() {
-                        return None;
-                    }
-
+                    
                     if *lo == 0 {
-                        Some(Expr::Optional(Rc::new(repeat_node.unwrap())))
+                        Some(Expr::Optional(Rc::new(repeat_node?)))
                     } else {
                         panic!("Should have been covered by is_complex case");
                     }
@@ -635,15 +631,13 @@ fn to_nested_expr(
                         .map(|x| ExprConditional::Condition(Rc::new(x))),
                     };
 
-                    let condition = condition.map(|condition| Expr::Conditional {
+                    condition.map(|condition| Expr::Conditional {
                         condition,
                         true_branch: Rc::new(true_branch),
                         false_branch: Rc::new(false_branch),
-                    });
-
-                    condition
+                    })
                 } else {
-                    return None;
+                    None
                 }
             },
             previous,
