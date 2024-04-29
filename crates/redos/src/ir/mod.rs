@@ -272,7 +272,6 @@ where
     }
 }
 
-
 /// Finds the first node of a certain type in the ancestors of an expression,
 /// where $expr is the expression to search in and $type is the type of node to search for.
 #[macro_export]
@@ -298,12 +297,12 @@ macro_rules! find_ancestor_type {
 
             false
         }
-    }
+    };
 }
 
 /// Finds the first node of a certain type in an expression,
 /// where $expr is the expression to search in and $type is the type of node to search for.
-/// 
+///
 /// Optionally, you can specify a few additional parameters:
 /// - `$always_ancestor`: The node that must always be an ancestor of the node
 /// - `$never_ancestor`: The node that must never be an ancestor of the node
@@ -346,7 +345,7 @@ macro_rules! find_node_type {
                     break 'func Some(node);
                 }
             }
-    
+
             None
         }
     }

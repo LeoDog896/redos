@@ -1,6 +1,9 @@
 use std::rc::Rc;
 
-use crate::{find_node_type, ir::{Expr, ExprNode, ExprWalker}};
+use crate::{
+    find_node_type,
+    ir::{Expr, ExprNode, ExprWalker},
+};
 
 /// Represents the result of an ILQ scan
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,11 +58,7 @@ fn scan_concat(expr: &Rc<ExprNode>) -> NqReturn {
     let repeat_node = repeat_node.unwrap();
 
     // find the second, nested repeat node
-    let nested_repeat = find_node_type!(
-        repeat_node,
-        Repeat,
-        always_ancestor=repeat_node
-    );
+    let nested_repeat = find_node_type!(repeat_node, Repeat, always_ancestor = repeat_node);
 
     if nested_repeat.is_none() {
         return NqReturn::new(false);
@@ -71,8 +70,8 @@ fn scan_concat(expr: &Rc<ExprNode>) -> NqReturn {
     let final_token = find_node_type!(
         nested_repeat,
         Token,
-        always_ancestor=expr,
-        never_ancestor_type_sandwich=Optional
+        always_ancestor = expr,
+        never_ancestor_type_sandwich = Optional
     );
 
     return NqReturn::new(final_token.is_some());
