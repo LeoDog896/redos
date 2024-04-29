@@ -4,6 +4,8 @@ pub mod vulnerability;
 mod ilq;
 mod nq;
 
+use std::rc::Rc;
+
 use fancy_regex::parse::Parser;
 use fancy_regex::Expr as RegexExpr;
 use ir::{to_expr, Expr, ExprConditional, ExprNode};
@@ -190,11 +192,16 @@ pub fn vulnerabilities(
     {
         let mut vulnerabilities: Vec<Vulnerability> = vec![];
 
-        // first vulnerability scan: ILQ
-        let ilq = ilq::scan_ilq(&expr);
+        let expr_rc = Rc::new(expr);
 
-        if ilq.is_present {
+        // first vulnerability scan: ILQ
+        if ilq::scan_ilq(expr_rc.clone()).is_present {
             vulnerabilities.push(Vulnerability::InitialQuantifier);
+        }
+
+        // second vulnerability scan: NQ
+        if nq::scan_nq(expr_rc).is_present {
+            vulnerabilities.push(Vulnerability::NestedQuantifier);
         }
 
         Ok(VulnerabilityResult {

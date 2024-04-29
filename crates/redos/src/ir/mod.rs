@@ -6,7 +6,6 @@ mod token;
 use token::Token;
 
 use std::{
-    cell::RefCell,
     num::NonZeroUsize,
     rc::{Rc, Weak},
 };
@@ -37,10 +36,6 @@ pub enum IrAssertion {
 pub enum ExprConditional {
     Condition(StrongLink<ExprNode>),
     BackrefExistsCondition(usize),
-}
-
-fn option_rc<T>(option: Option<T>) -> Option<Rc<T>> {
-    option.map(|x| Rc::new(x))
 }
 
 /// A reference to another node that doesn't force it to be always held
@@ -96,15 +91,23 @@ impl ExprNode {
         Some(node)
     }
 
-    fn new_prev_consume<F>(
-        current: F,
-        previous: Option<WeakLink<ExprNode>>,
-        parent: Option<WeakLink<ExprNode>>,
-    ) -> ExprNode
-    where
-        F: FnOnce(WeakLink<ExprNode>) -> Expr,
-    {
-        Self::new_prev_consume_optional(|x| Some(current(x)), previous, parent).unwrap()
+    /// Checks if this node is an ancestor of another node.
+    pub fn is_ancestor_of(&self, other: &ExprNode) -> bool {
+        let mut current = other.parent.clone();
+
+        while let Some(parent) = current {
+            if let Some(parent) = parent.upgrade() {
+                if Rc::ptr_eq(&parent, &Rc::new(self.clone())) {
+                    return true;
+                }
+
+                current = parent.parent.clone();
+            } else {
+                break;
+            }
+        }
+
+        false
     }
 
     /// Helper function that produces a dummy value
@@ -118,22 +121,6 @@ impl ExprNode {
             previous: None,
             next: None,
             parent: None,
-        }
-    }
-
-    fn parented_dummy(
-        parent: Option<WeakLink<ExprNode>>,
-        previous: Option<WeakLink<ExprNode>>,
-    ) -> ExprNode {
-        ExprNode {
-            current: Expr::Token(Token {
-                yes: vec![],
-                no: vec![],
-                ignore_case: false,
-            }),
-            previous,
-            next: None,
-            parent,
         }
     }
 }
@@ -285,6 +272,129 @@ where
     }
 }
 
+
+/// Finds the first node of a certain type in the ancestors of an expression,
+/// where $expr is the expression to search in and $type is the type of node to search for.
+#[macro_export]
+macro_rules! find_ancestor_type {
+    (
+        $expr:expr,
+        $type:ident
+    ) => {
+        'func: {
+            let mut current = $expr.clone();
+
+            while let Some(parent) = current.parent.clone() {
+                if let Some(parent) = parent.upgrade() {
+                    if let Expr::$type(_) = &parent.current {
+                        break 'func Some(parent);
+                    }
+
+                    current = parent;
+                } else {
+                    break 'func None;
+                }
+            }
+
+            false
+        }
+    }
+}
+
+/// Finds the first node of a certain type in an expression,
+/// where $expr is the expression to search in and $type is the type of node to search for.
+/// 
+/// Optionally, you can specify a few additional parameters:
+/// - `$always_ancestor`: The node that must always be an ancestor of the node
+/// - `$never_ancestor`: The node that must never be an ancestor of the node
+/// - `$never_ancestor_type`: The type of node that must never be an ancestor of the node
+/// - `$never_ancestor_type_sandwich`: The type of node that must never be an ancestor of the node,
+/// excluding ancestors of those specified in $always_ancestor
+#[macro_export]
+macro_rules! find_node_type {
+    (
+        $expr:expr,
+        $type:ident
+        $(
+            ,always_ancestor=$always_ancestor:expr
+            $(,never_ancestor_type_sandwich=$never_ancestor_type_sandwich:expr)?
+        )?
+        $(,never_ancestor=$never_ancestor:expr)?
+        $(,never_ancestor_type=$never_ancestor_type:ident)?
+    ) => {
+        'func: {
+            for node in ExprWalker::new($expr.clone()) {
+                $(
+                    if !node.is_ancestor_of(&$always_ancestor) {
+                        continue;
+                    }
+                )?
+
+                $(
+                    if node.is_ancestor_of(&$never_ancestor) {
+                        continue;
+                    }
+                )?
+
+                $(
+                    if let Some(found_ancestor) = find_ancestor_type!(node, $never_ancestor_type) {
+                        continue;
+                    }
+                )?
+
+                if let Expr::$type(_) = &node.current {
+                    break 'func Some(node);
+                }
+            }
+    
+            None
+        }
+    }
+}
+
+pub struct ExprWalker {
+    current: Rc<ExprNode>,
+}
+
+impl ExprWalker {
+    pub fn new(current: Rc<ExprNode>) -> Self {
+        Self { current }
+    }
+
+    pub fn walk<F>(&self, f: F)
+    where
+        F: Fn(Rc<ExprNode>),
+    {
+        let mut current = self.current.clone();
+
+        while let Some(next) = current.next.clone() {
+            if let Some(next) = next.upgrade() {
+                f(next.clone());
+                current = next;
+            } else {
+                break;
+            }
+        }
+    }
+}
+
+impl Iterator for ExprWalker {
+    type Item = Rc<ExprNode>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next = self.current.next.clone();
+
+        if let Some(next) = next {
+            if let Some(next) = next.upgrade() {
+                self.current = next.clone();
+                return Some(next);
+            }
+        }
+
+        None
+    }
+}
+
 fn to_nested_expr(
     expr: &RegexExpr,
     config: &VulnerabilityConfig,
@@ -299,8 +409,8 @@ fn to_nested_expr(
                 Token::new(".")
             } else {
                 Token {
-                    yes: vec![Value::Singular(".".to_string())],
-                    no: vec![Value::Singular("\\n".to_string())],
+                    yes: vec![Value::match_char('.')],
+                    no: vec![Value::match_char('\n')],
                     ignore_case: false,
                 }
             }),
