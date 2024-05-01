@@ -28,14 +28,17 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Scans source code
     Scan {
         #[command(subcommand)]
         command: ScanCommand,
     },
+    /// Prints out the abstract syntax tree of regex.
     Ast {
         /// The regex to parse
         regex: String,
     },
+    /// Prints out the intermediate representation of a regex.
     Ir {
         /// The regex to parse
         regex: String,

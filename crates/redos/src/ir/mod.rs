@@ -45,11 +45,24 @@ pub type WeakLink<T> = Weak<RefCell<T>>;
 /// A reference to another node that forces it to be dropped and held.
 pub type StrongLink<T> = Rc<RefCell<T>>;
 
+/// A node that links to other nodes - it stores information about its
+/// child, siblings, and its parent.
 #[derive(Debug, Clone)]
 pub struct ExprNode {
+    /// The expression it holds.
     pub current: Expr,
+    /// A weak link to its previous sibling (or parent!), as to not own the reference.
+    /// This is the inverse of [previous].
     pub previous: Option<WeakLink<ExprNode>>,
+
+    /// A weak link to its next:
+    /// - sibling 
+    /// - parent's next sibling
+    /// as to not own the reference.
     pub next: Option<WeakLink<ExprNode>>,
+
+    /// The parent of the node. The (almost) inverse of [current].
+    /// Weak as to not own the reference.
     pub parent: Option<WeakLink<ExprNode>>,
 }
 
@@ -126,6 +139,8 @@ impl ExprNode {
     }
 }
 
+/// Utility function to create a node which has a parent and previous referencing this
+/// function's argument. Helps aid in IR creation.
 fn container<F>(
     previous: Option<WeakLink<ExprNode>>,
     parent: Option<WeakLink<ExprNode>>,
@@ -166,6 +181,9 @@ where
 
     Some(node)
 }
+
+/// An AST transformed expression that removes finer details
+/// present in IR.
 #[derive(Debug, Clone)]
 pub enum Expr {
     /// Some token, whether its a character class, any character, etc.
@@ -206,6 +224,7 @@ pub enum Expr {
     },
 }
 
+/// Converts a [RegexExpr] to a [ExprNode].
 pub fn to_expr(expr: &RegexExpr, config: &VulnerabilityConfig) -> Option<StrongLink<ExprNode>> {
     let expr = to_nested_expr(expr, config, nonzero_lit::usize!(1), None, None);
 
@@ -573,6 +592,7 @@ fn to_nested_expr(
                     if *lo == 0 {
                         Some(Expr::Optional(Rc::new(RefCell::new(repeat_node?))))
                     } else {
+                        // TODO: wrong!
                         panic!("Should have been covered by is_complex case");
                     }
                 },
