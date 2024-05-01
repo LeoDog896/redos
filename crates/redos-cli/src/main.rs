@@ -11,7 +11,7 @@ use languages::{
     language::{Language, Location},
 };
 use owo_colors::OwoColorize;
-use redos::vulnerabilities;
+use redos::{ir::to_expr, vulnerabilities};
 use repo::parse_repository;
 use tempdir::TempDir;
 
@@ -36,6 +36,10 @@ enum Commands {
         /// The regex to parse
         regex: String,
     },
+    Ir {
+        /// The regex to parse
+        regex: String
+    }
 }
 
 #[derive(Subcommand)]
@@ -137,6 +141,9 @@ async fn main() -> Result<()> {
         },
         Commands::Ast { regex } => {
             println!("{:#?}", FancyParser::parse(regex.as_str()));
+        },
+        Commands::Ir { regex } => {
+            println!("{:#?}", to_expr(&FancyParser::parse(regex.as_str()).expect("Can not parse regex.").expr, &Default::default()))
         }
     }
 

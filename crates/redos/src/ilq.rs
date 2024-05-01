@@ -1,6 +1,4 @@
-use std::rc::Rc;
-
-use crate::ir::{Expr, ExprNode, IrAssertion};
+use crate::ir::{Expr, ExprNode, StrongLink};
 
 /// Represents the result of an ILQ scan
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,8 +19,8 @@ impl IlqReturn {
 ///
 /// The regex must match the pattern (where t is arbitrary matchable tokens):
 /// t*t+t+
-pub fn scan_ilq(expr: Rc<ExprNode>) -> IlqReturn {
-    match &expr.current {
+pub fn scan_ilq(expr: StrongLink<ExprNode>) -> IlqReturn {
+    match &expr.borrow().current {
         // if we hit anything that isn't a Vec<Expr>, we're done
         Expr::Token(_) => IlqReturn::new(false),
         Expr::Assertion(_) => IlqReturn::new(false),
@@ -76,7 +74,7 @@ enum ConcatResults {
     Continue,
 }
 
-fn scan_ilq_concat(exprs: &Vec<Rc<ExprNode>>) -> IlqReturn {
+fn scan_ilq_concat(exprs: &Vec<StrongLink<ExprNode>>) -> IlqReturn {
     // // first, lets try to hit a repeat token
     // for expr in exprs {
     //     let result: ConcatResults = match expr {

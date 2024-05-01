@@ -1,8 +1,6 @@
-use std::rc::Rc;
-
 use crate::{
     find_node_type,
-    ir::{Expr, ExprNode, ExprWalker},
+    ir::{Expr, ExprNode, ExprWalker, StrongLink},
 };
 
 /// Represents the result of an ILQ scan
@@ -24,8 +22,8 @@ impl NqReturn {
 ///
 /// The regex must match the pattern (where t is arbitrary matchable tokens):
 /// t*(t*)*t+
-pub fn scan_nq(expr: Rc<ExprNode>) -> NqReturn {
-    match &expr.current {
+pub fn scan_nq(expr: StrongLink<ExprNode>) -> NqReturn {
+    match &expr.borrow().current {
         Expr::Token(_) => NqReturn::new(false),
         Expr::Assertion(_) => NqReturn::new(false),
         Expr::Alt(list) => list.iter().fold(NqReturn::new(false), |acc, e| {
@@ -47,7 +45,7 @@ pub fn scan_nq(expr: Rc<ExprNode>) -> NqReturn {
     }
 }
 
-fn scan_concat(expr: &Rc<ExprNode>) -> NqReturn {
+fn scan_concat(expr: &StrongLink<ExprNode>) -> NqReturn {
     // find the initial repeat node
     let repeat_node = find_node_type!(expr.clone(), Repeat);
 

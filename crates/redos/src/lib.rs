@@ -4,11 +4,9 @@ pub mod vulnerability;
 mod ilq;
 mod nq;
 
-use std::rc::Rc;
-
 use fancy_regex::parse::Parser;
 use fancy_regex::Expr as RegexExpr;
-use ir::{to_expr, Expr, ExprConditional, ExprNode};
+use ir::{to_expr, Expr, ExprConditional, ExprNode, StrongLink};
 use vulnerability::{Vulnerability, VulnerabilityConfig};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,12 +37,12 @@ impl RegexInfo {
 /// - It must contain a repeat
 /// - The repeat must have a bound size greater than `config.second_max_quantifier`
 /// - The regex must have a terminating state (to allow for backtracking) (TODO: this is not implemented yet)
-fn regex_pre_scan(expr: &ExprNode) -> RegexInfo {
-    match &expr.current {
+fn regex_pre_scan(expr: &StrongLink<ExprNode>) -> RegexInfo {
+    match &expr.borrow().current {
         // even though there is a repeat, since it is the root node,
         // we must dig deeper to see if the repeat does matter,
         // since else this will violate our terminating state criteria
-        Expr::Repeat(expr) => regex_pre_scan(expr.as_ref()),
+        Expr::Repeat(expr) => regex_pre_scan(expr),
         Expr::Token(_) => RegexInfo::empty(),
         Expr::Assertion(_) => RegexInfo::empty(),
 
@@ -66,13 +64,13 @@ fn regex_pre_scan(expr: &ExprNode) -> RegexInfo {
         // doesn't matter how many groups we nest it in,
         // a group in the root node is as useful as
         // not having a group at all
-        Expr::Group(e, _) => regex_pre_scan(e.as_ref()),
-        Expr::LookAround(e, _) => regex_pre_scan(e.as_ref()),
-        Expr::AtomicGroup(e) => regex_pre_scan(e.as_ref()),
+        Expr::Group(e, _) => regex_pre_scan(e),
+        Expr::LookAround(e, _) => regex_pre_scan(e),
+        Expr::AtomicGroup(e) => regex_pre_scan(e),
 
         // if the optional is in the root, it doesn't matter
         // if it's nested or not, it will always match
-        Expr::Optional(e) => regex_pre_scan(e.as_ref()),
+        Expr::Optional(e) => regex_pre_scan(e),
 
         Expr::Conditional {
             condition,
@@ -82,19 +80,19 @@ fn regex_pre_scan(expr: &ExprNode) -> RegexInfo {
             match condition {
                 // TODO: can we potentially skip the true_branch here if we know the group never matched
                 ExprConditional::BackrefExistsCondition(_) => {
-                    regex_pre_scan_nested(true_branch.as_ref())
-                        .merge(regex_pre_scan(false_branch.as_ref()))
+                    regex_pre_scan_nested(true_branch)
+                        .merge(regex_pre_scan(false_branch))
                 }
-                ExprConditional::Condition(condition) => regex_pre_scan(condition.as_ref())
-                    .merge(regex_pre_scan_nested(true_branch.as_ref()))
-                    .merge(regex_pre_scan_nested(false_branch.as_ref())),
+                ExprConditional::Condition(condition) => regex_pre_scan(condition)
+                    .merge(regex_pre_scan_nested(true_branch))
+                    .merge(regex_pre_scan_nested(false_branch)),
             }
         }
     }
 }
 
-fn regex_pre_scan_nested(expr: &ExprNode) -> RegexInfo {
-    match &expr.current {
+fn regex_pre_scan_nested(expr: &StrongLink<ExprNode>) -> RegexInfo {
+    match &expr.borrow().current {
         Expr::Repeat(_) => RegexInfo {
             has_repeat: true,
             has_alternation: false,
@@ -117,19 +115,19 @@ fn regex_pre_scan_nested(expr: &ExprNode) -> RegexInfo {
                 has_repeat: false,
                 has_alternation: true,
             }),
-        Expr::Group(e, _) => regex_pre_scan_nested(e.as_ref()),
-        Expr::LookAround(e, _) => regex_pre_scan_nested(e.as_ref()),
-        Expr::AtomicGroup(e) => regex_pre_scan_nested(e.as_ref()),
-        Expr::Optional(e) => regex_pre_scan_nested(e.as_ref()),
+        Expr::Group(e, _) => regex_pre_scan_nested(e),
+        Expr::LookAround(e, _) => regex_pre_scan_nested(e),
+        Expr::AtomicGroup(e) => regex_pre_scan_nested(e),
+        Expr::Optional(e) => regex_pre_scan_nested(e),
         Expr::Conditional {
             condition,
             true_branch,
             false_branch,
         } => match condition {
             ExprConditional::BackrefExistsCondition(_) => RegexInfo::empty(),
-            ExprConditional::Condition(condition) => regex_pre_scan_nested(condition.as_ref())
-                .merge(regex_pre_scan_nested(true_branch.as_ref()))
-                .merge(regex_pre_scan_nested(false_branch.as_ref())),
+            ExprConditional::Condition(condition) => regex_pre_scan_nested(condition)
+                .merge(regex_pre_scan_nested(true_branch))
+                .merge(regex_pre_scan_nested(false_branch)),
         },
     }
 }
@@ -192,15 +190,13 @@ pub fn vulnerabilities(
     {
         let mut vulnerabilities: Vec<Vulnerability> = vec![];
 
-        let expr_rc = Rc::new(expr);
-
         // first vulnerability scan: ILQ
-        if ilq::scan_ilq(expr_rc.clone()).is_present {
+        if ilq::scan_ilq(expr.clone()).is_present {
             vulnerabilities.push(Vulnerability::InitialQuantifier);
         }
 
         // second vulnerability scan: NQ
-        if nq::scan_nq(expr_rc).is_present {
+        if nq::scan_nq(expr).is_present {
             vulnerabilities.push(Vulnerability::NestedQuantifier);
         }
 

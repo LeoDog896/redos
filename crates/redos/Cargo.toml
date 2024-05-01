@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+chumsky = "0.9.3"
 fancy-regex = { git = "https://github.com/LeoDog896/fancy-regex", rev = "edc7c1f" }
 nom = "7.1.3"
 nonzero_lit = "0.1.2"

@@ -6,8 +6,7 @@ mod token;
 use token::Token;
 
 use std::{
-    num::NonZeroUsize,
-    rc::{Rc, Weak},
+    cell::RefCell, num::NonZeroUsize, rc::{Rc, Weak}
 };
 
 use fancy_regex::{Assertion, Expr as RegexExpr, LookAround};
@@ -39,10 +38,10 @@ pub enum ExprConditional {
 }
 
 /// A reference to another node that doesn't force it to be always held
-type WeakLink<T> = Weak<T>;
+pub type WeakLink<T> = Weak<RefCell<T>>;
 
 /// A reference to another node that forces it to be dropped and held.
-type StrongLink<T> = Rc<T>;
+pub type StrongLink<T> = Rc<RefCell<T>>;
 
 #[derive(Debug, Clone)]
 pub struct ExprNode {
@@ -80,7 +79,7 @@ impl ExprNode {
         // Here, we don't care about current; we are going to replace it
         let mut node = ExprNode::new_prev(Expr::Concat(vec![]), previous, parent);
 
-        let child = current(Rc::downgrade(&Rc::new(node.clone())));
+        let child = current(Rc::downgrade(&Rc::new(RefCell::new(node.clone()))));
 
         if child.is_none() {
             return None;
@@ -97,11 +96,11 @@ impl ExprNode {
 
         while let Some(parent) = current {
             if let Some(parent) = parent.upgrade() {
-                if Rc::ptr_eq(&parent, &Rc::new(self.clone())) {
+                if Rc::ptr_eq(&parent, &Rc::new(RefCell::new(self.clone()))) {
                     return true;
                 }
 
-                current = parent.parent.clone();
+                current = parent.borrow().parent.clone();
             } else {
                 break;
             }
@@ -137,12 +136,12 @@ where
     F: FnOnce(Option<ExprNode>) -> Expr,
 {
     let mut node = ExprNode::new_prev(
-        Expr::Group(Rc::new(ExprNode::dummy()), group_increment.into()),
+        Expr::Group(Rc::new(RefCell::new(ExprNode::dummy())), group_increment.into()),
         previous,
         parent,
     );
 
-    let rc = Rc::new(node.clone());
+    let rc = Rc::new(RefCell::new(node.clone()));
 
     let nest = to_nested_expr(
         expr,
@@ -202,70 +201,70 @@ pub enum Expr {
     },
 }
 
-pub fn to_expr(expr: &RegexExpr, config: &VulnerabilityConfig) -> Option<ExprNode> {
+pub fn to_expr(expr: &RegexExpr, config: &VulnerabilityConfig) -> Option<StrongLink<ExprNode>> {
     let expr = to_nested_expr(expr, config, nonzero_lit::usize!(1), None, None);
 
     if expr.is_none() {
         return None;
     }
 
-    let expr = expr.unwrap();
+    let expr = Rc::new(RefCell::new(expr.unwrap()));
 
     // set all `next` pointers
-    // walk_unordered(expr.clone(), |e| {
-    //     if let Some(prev) = e.previous.clone() {
-    //         if let Some(prev) = prev.upgrade() {
-    //             prev.next = Some(Rc::downgrade(&Rc::new(e.clone())));
-    //         }
-    //     }
-    // });
+    walk_unordered(&expr, |e| {
+        if let Some(prev) = e.borrow().previous.clone() {
+            if let Some(prev) = prev.upgrade() {
+                prev.borrow_mut().next = Some(Rc::downgrade(&e.clone()));
+            }
+        }
+    });
 
     Some(expr)
 }
 
 /// Walks through every node with no guaranteed order.
-fn walk_unordered<F>(expr: &Rc<ExprNode>, mut f: F)
+fn walk_unordered<F>(expr: &StrongLink<ExprNode>, f: F)
 where
-    F: FnMut(Rc<ExprNode>),
+    F: Fn(StrongLink<ExprNode>) + Clone,
 {
     f(expr.clone());
 
-    match &expr.current {
+    match &expr.borrow().current {
         Expr::Concat(list) => {
             for e in list {
-                walk_unordered(e, &mut f);
+                walk_unordered(e, f.clone());
             }
         }
         Expr::Alt(list) => {
             for e in list {
-                walk_unordered(e, &mut f);
+                walk_unordered(e, f.clone());
             }
         }
         Expr::Group(e, _) => {
-            walk_unordered(e, &mut f);
+            walk_unordered(e, f);
         }
         Expr::LookAround(e, _) => {
-            walk_unordered(e, &mut f);
+            walk_unordered(e, f);
         }
         Expr::AtomicGroup(e) => {
-            walk_unordered(e, &mut f);
+            walk_unordered(e, f);
         }
         Expr::Optional(e) => {
-            walk_unordered(e, &mut f);
+            walk_unordered(e, f);
         }
         Expr::Repeat(e) => {
-            walk_unordered(e, &mut f);
+            walk_unordered(e, f);
         }
         Expr::Conditional {
             true_branch,
             false_branch,
             condition,
         } => {
-            walk_unordered(true_branch, &mut f);
-            walk_unordered(false_branch, &mut f);
+            walk_unordered(true_branch, f.clone());
+            walk_unordered(false_branch, f.clone());
 
             if let ExprConditional::Condition(e) = condition {
-                walk_unordered(e, &mut f);
+                walk_unordered(e, f);
             }
         }
         _ => {}
@@ -324,7 +323,7 @@ macro_rules! find_node_type {
         'func: {
             for node in ExprWalker::new($expr.clone()) {
                 $(
-                    if !node.is_ancestor_of(&$always_ancestor) {
+                    if !node.borrow().is_ancestor_of(&$always_ancestor.borrow()) {
                         continue;
                     }
                 )?
@@ -341,7 +340,9 @@ macro_rules! find_node_type {
                     }
                 )?
 
-                if let Expr::$type(_) = &node.current {
+                let cloned_node = node.clone();
+                let borrowed_node = cloned_node.borrow();
+                if let Expr::$type(_) = &borrowed_node.current {
                     break 'func Some(node);
                 }
             }
@@ -352,21 +353,21 @@ macro_rules! find_node_type {
 }
 
 pub struct ExprWalker {
-    current: Rc<ExprNode>,
+    current: StrongLink<ExprNode>,
 }
 
 impl ExprWalker {
-    pub fn new(current: Rc<ExprNode>) -> Self {
+    pub fn new(current: StrongLink<ExprNode>) -> Self {
         Self { current }
     }
 
     pub fn walk<F>(&self, f: F)
     where
-        F: Fn(Rc<ExprNode>),
+        F: Fn(StrongLink<ExprNode>),
     {
         let mut current = self.current.clone();
 
-        while let Some(next) = current.next.clone() {
+        while let Some(next) = current.clone().borrow().next.clone() {
             if let Some(next) = next.upgrade() {
                 f(next.clone());
                 current = next;
@@ -378,10 +379,10 @@ impl ExprWalker {
 }
 
 impl Iterator for ExprWalker {
-    type Item = Rc<ExprNode>;
+    type Item = StrongLink<ExprNode>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let next = self.current.next.clone();
+        let next = self.current.borrow().next.clone();
 
         if let Some(next) = next {
             if let Some(next) = next.upgrade() {
@@ -450,6 +451,7 @@ fn to_nested_expr(
                     .filter_map(|e| {
                         to_nested_expr(e, config, group_increment, Some(parent.clone()), None)
                     })
+                    .map(RefCell::new)
                     .map(Rc::new)
                     .collect::<Vec<_>>();
 
@@ -464,12 +466,13 @@ fn to_nested_expr(
                         };
 
                         ExprNode {
-                            current: e.current.clone(),
+                            current: e.borrow().current.clone(),
                             previous: Some(previous),
-                            next: e.next.clone(),
-                            parent: e.parent.clone(),
+                            next: e.borrow().next.clone(),
+                            parent: e.borrow().parent.clone(),
                         }
                     })
+                    .map(RefCell::new)
                     .map(Rc::new)
                     .collect::<Vec<_>>();
 
@@ -494,6 +497,7 @@ fn to_nested_expr(
                                 Some(x.clone()),
                                 Some(x.clone()),
                             )
+                            .map(RefCell::new)
                             .map(Rc::new)
                         })
                         .collect::<Vec<_>>(),
@@ -508,7 +512,7 @@ fn to_nested_expr(
             group_increment,
             config,
             e,
-            |tree: Option<ExprNode>| Expr::Group(Rc::new(tree.unwrap()), group_increment.into()),
+            |tree: Option<ExprNode>| Expr::Group(Rc::new(RefCell::new(tree.unwrap())), group_increment.into()),
         ),
         RegexExpr::LookAround(e, la) => container(
             previous,
@@ -516,7 +520,7 @@ fn to_nested_expr(
             group_increment,
             config,
             e,
-            |tree: Option<ExprNode>| Expr::LookAround(Rc::new(tree.unwrap()), *la),
+            |tree: Option<ExprNode>| Expr::LookAround(Rc::new(RefCell::new(tree.unwrap())), *la),
         ),
         RegexExpr::Repeat {
             child,
@@ -544,7 +548,7 @@ fn to_nested_expr(
                                     Some(node.clone()),
                                     Some(node.clone()),
                                 )
-                                .map(|x| Expr::Repeat(Rc::new(x)))
+                                .map(|x| Expr::Repeat(Rc::new(RefCell::new(x))))
                             },
                             Some(node.clone()),
                             Some(node.clone()),
@@ -560,7 +564,7 @@ fn to_nested_expr(
                     };
                     
                     if *lo == 0 {
-                        Some(Expr::Optional(Rc::new(repeat_node?)))
+                        Some(Expr::Optional(Rc::new(RefCell::new(repeat_node?))))
                     } else {
                         panic!("Should have been covered by is_complex case");
                     }
@@ -589,7 +593,7 @@ fn to_nested_expr(
             group_increment,
             config,
             e,
-            |tree: Option<ExprNode>| Expr::AtomicGroup(Rc::new(tree.unwrap())),
+            |tree: Option<ExprNode>| Expr::AtomicGroup(Rc::new(RefCell::new(tree.unwrap()))),
         ),
         RegexExpr::KeepOut => unimplemented!("Keep out not supported."),
         RegexExpr::ContinueFromPreviousMatchEnd => {
@@ -628,13 +632,13 @@ fn to_nested_expr(
                             Some(x.clone()),
                             Some(x.clone()),
                         )
-                        .map(|x| ExprConditional::Condition(Rc::new(x))),
+                        .map(|x| ExprConditional::Condition(Rc::new(RefCell::new(x)))),
                     };
 
                     condition.map(|condition| Expr::Conditional {
                         condition,
-                        true_branch: Rc::new(true_branch),
-                        false_branch: Rc::new(false_branch),
+                        true_branch: Rc::new(RefCell::new(true_branch)),
+                        false_branch: Rc::new(RefCell::new(false_branch)),
                     })
                 } else {
                     None
