@@ -80,8 +80,7 @@ fn regex_pre_scan(expr: &StrongLink<ExprNode>) -> RegexInfo {
             match condition {
                 // TODO: can we potentially skip the true_branch here if we know the group never matched
                 ExprConditional::BackrefExistsCondition(_) => {
-                    regex_pre_scan_nested(true_branch)
-                        .merge(regex_pre_scan(false_branch))
+                    regex_pre_scan_nested(true_branch).merge(regex_pre_scan(false_branch))
                 }
                 ExprConditional::Condition(condition) => regex_pre_scan(condition)
                     .merge(regex_pre_scan_nested(true_branch))

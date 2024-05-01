@@ -6,7 +6,9 @@ mod token;
 use token::Token;
 
 use std::{
-    cell::RefCell, num::NonZeroUsize, rc::{Rc, Weak}
+    cell::RefCell,
+    num::NonZeroUsize,
+    rc::{Rc, Weak},
 };
 
 use fancy_regex::{Assertion, Expr as RegexExpr, LookAround};
@@ -136,7 +138,10 @@ where
     F: FnOnce(Option<ExprNode>) -> Expr,
 {
     let mut node = ExprNode::new_prev(
-        Expr::Group(Rc::new(RefCell::new(ExprNode::dummy())), group_increment.into()),
+        Expr::Group(
+            Rc::new(RefCell::new(ExprNode::dummy())),
+            group_increment.into(),
+        ),
         previous,
         parent,
     );
@@ -512,7 +517,9 @@ fn to_nested_expr(
             group_increment,
             config,
             e,
-            |tree: Option<ExprNode>| Expr::Group(Rc::new(RefCell::new(tree.unwrap())), group_increment.into()),
+            |tree: Option<ExprNode>| {
+                Expr::Group(Rc::new(RefCell::new(tree.unwrap())), group_increment.into())
+            },
         ),
         RegexExpr::LookAround(e, la) => container(
             previous,
@@ -562,7 +569,7 @@ fn to_nested_expr(
                             Some(node.clone()),
                         )
                     };
-                    
+
                     if *lo == 0 {
                         Some(Expr::Optional(Rc::new(RefCell::new(repeat_node?))))
                     } else {
