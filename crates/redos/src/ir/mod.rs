@@ -87,20 +87,20 @@ impl ExprNode {
         current: F,
         previous: Option<WeakLink<ExprNode>>,
         parent: Option<WeakLink<ExprNode>>,
-    ) -> Option<ExprNode>
+    ) -> Option<StrongLink<ExprNode>>
     where
         F: FnOnce(WeakLink<ExprNode>) -> Option<Expr>,
     {
         // Here, we don't care about current; we are going to replace it
-        let mut node = ExprNode::new_prev(Expr::Concat(vec![]), previous, parent);
+        let node = Rc::new(RefCell::new(ExprNode::new_prev(Expr::Concat(vec![]), previous, parent)));
 
-        let child = current(Rc::downgrade(&Rc::new(RefCell::new(node.clone()))));
+        let child = current(Rc::downgrade(&node));
 
         if child.is_none() {
             return None;
         }
 
-        node.current = child.unwrap();
+        node.borrow_mut().current = child.unwrap();
 
         Some(node)
     }
@@ -148,20 +148,18 @@ fn container<F>(
     config: &VulnerabilityConfig,
     expr: &RegexExpr,
     gen: F,
-) -> Option<ExprNode>
+) -> Option<StrongLink<ExprNode>>
 where
-    F: FnOnce(Option<ExprNode>) -> Expr,
+    F: FnOnce(Option<StrongLink<ExprNode>>) -> Expr,
 {
-    let mut node = ExprNode::new_prev(
+    let node = Rc::new(RefCell::new(ExprNode::new_prev(
         Expr::Group(
             Rc::new(RefCell::new(ExprNode::dummy())),
             group_increment.into(),
         ),
         previous,
         parent,
-    );
-
-    let rc = Rc::new(RefCell::new(node.clone()));
+    )));
 
     let nest = to_nested_expr(
         expr,
@@ -169,15 +167,15 @@ where
         group_increment
             .checked_add(1)
             .expect("group increment overflow"),
-        Some(Rc::downgrade(&rc)),
-        Some(Rc::downgrade(&rc)),
+        Some(Rc::downgrade(&node)),
+        Some(Rc::downgrade(&node)),
     );
 
     if nest.is_none() {
         return None;
     }
 
-    node.current = gen(nest);
+    node.borrow_mut().current = gen(nest);
 
     Some(node)
 }
@@ -190,10 +188,12 @@ pub enum Expr {
     Token(Token),
     /// An assertion
     Assertion(IrAssertion),
-    /// Concatenation of multiple expressions, must match in order, e.g. `a.` is a concatenation of
+    /// Concatenation of multiple expressions, must match in order,
+    /// e.g. `a.` is a concatenation of
     /// the literal `a` and `.` for any character
     Concat(Vec<StrongLink<ExprNode>>),
-    /// Alternative of multiple expressions, one of them must match, e.g. `a|b` is an alternative
+    /// Alternative of multiple expressions, one of them must match,
+    /// e.g. `a|b` is an alternative
     /// where either the literal `a` or `b` must match
     Alt(Vec<StrongLink<ExprNode>>),
     /// Capturing group of expression, e.g. `(a.)` matches `a` and any character and "captures"
@@ -232,13 +232,18 @@ pub fn to_expr(expr: &RegexExpr, config: &VulnerabilityConfig) -> Option<StrongL
         return None;
     }
 
-    let expr = Rc::new(RefCell::new(expr.unwrap()));
+    let expr = expr.unwrap();
 
     // set all `next` pointers
     walk_unordered(&expr, |e| {
-        if let Some(prev) = e.borrow().previous.clone() {
+        if let Some(prev) = &e.borrow().previous {
             if let Some(prev) = prev.upgrade() {
-                prev.borrow_mut().next = Some(Rc::downgrade(&e.clone()));
+                let mut prev = prev.borrow_mut();
+                if prev.next.is_some() {
+                    // TODO: handle this better
+                    return;
+                }
+                prev.next = Some(Rc::downgrade(&e.clone()));
             }
         }
     });
@@ -253,42 +258,43 @@ where
 {
     f(expr.clone());
 
-    match &expr.borrow().current {
+    // TODO: this is not a good way to do this
+    match unsafe { expr.try_borrow_unguarded() }.unwrap().current.clone() {
         Expr::Concat(list) => {
             for e in list {
-                walk_unordered(e, f.clone());
+                walk_unordered(&e.clone(), f.clone());
             }
         }
         Expr::Alt(list) => {
             for e in list {
-                walk_unordered(e, f.clone());
+                walk_unordered(&e.clone(), f.clone());
             }
         }
         Expr::Group(e, _) => {
-            walk_unordered(e, f);
+            walk_unordered(&e, f);
         }
         Expr::LookAround(e, _) => {
-            walk_unordered(e, f);
+            walk_unordered(&e, f);
         }
         Expr::AtomicGroup(e) => {
-            walk_unordered(e, f);
+            walk_unordered(&e, f);
         }
         Expr::Optional(e) => {
-            walk_unordered(e, f);
+            walk_unordered(&e, f);
         }
         Expr::Repeat(e) => {
-            walk_unordered(e, f);
+            walk_unordered(&e, f);
         }
         Expr::Conditional {
             true_branch,
             false_branch,
             condition,
         } => {
-            walk_unordered(true_branch, f.clone());
-            walk_unordered(false_branch, f.clone());
+            walk_unordered(&true_branch, f.clone());
+            walk_unordered(&false_branch, f.clone());
 
             if let ExprConditional::Condition(e) = condition {
-                walk_unordered(e, f);
+                walk_unordered(&e, f);
             }
         }
         _ => {}
@@ -346,11 +352,12 @@ macro_rules! find_node_type {
     ) => {
         'func: {
             for node in ExprWalker::new($expr.clone()) {
-                $(
-                    if !node.borrow().is_ancestor_of(&$always_ancestor.borrow()) {
-                        continue;
-                    }
-                )?
+                // TODO: check in reverse; if parent has child, then child has parent
+                // $(
+                //     if !$always_ancestor.borrow().is_ancestor_of(&node.borrow()) {
+                //         continue;
+                //     }
+                // )?
 
                 $(
                     if node.is_ancestor_of(&$never_ancestor) {
@@ -425,10 +432,10 @@ fn to_nested_expr(
     group_increment: NonZeroUsize,
     parent: Option<WeakLink<ExprNode>>,
     previous: Option<WeakLink<ExprNode>>,
-) -> Option<ExprNode> {
+) -> Option<StrongLink<ExprNode>> {
     match expr {
         RegexExpr::Empty => None,
-        RegexExpr::Any { newline } => Some(ExprNode::new_prev(
+        RegexExpr::Any { newline } => Some(Rc::new(RefCell::new(ExprNode::new_prev(
             Expr::Token(if *newline {
                 Token::new(".")
             } else {
@@ -440,11 +447,11 @@ fn to_nested_expr(
             }),
             previous,
             parent,
-        )),
-        RegexExpr::Assertion(a) => Some(ExprNode::new_prev(
+        )))),
+        RegexExpr::Assertion(a) => Some(Rc::new(RefCell::new(ExprNode::new_prev(
             Expr::Assertion(match a {
                 // Since start and line only depend on the multiline flag,
-                // they don't particurally matter for ReDoS detection.
+                // they don't particularly matter for ReDoS detection.
                 Assertion::StartText => IrAssertion::Start,
                 Assertion::EndText => IrAssertion::End,
                 Assertion::StartLine { .. } => IrAssertion::Start,
@@ -457,8 +464,8 @@ fn to_nested_expr(
             }),
             previous,
             parent,
-        )),
-        RegexExpr::Literal { casei, val } => Some(ExprNode::new_prev(
+        )))),
+        RegexExpr::Literal { casei, val } => Some(Rc::new(RefCell::new(ExprNode::new_prev(
             Expr::Token(if *casei {
                 Token::new_case(val, true)
             } else {
@@ -466,7 +473,7 @@ fn to_nested_expr(
             }),
             previous,
             parent,
-        )),
+        )))),
         // TODO: propagate group increment
         RegexExpr::Concat(list) => ExprNode::new_prev_consume_optional(
             |parent| {
@@ -475,8 +482,6 @@ fn to_nested_expr(
                     .filter_map(|e| {
                         to_nested_expr(e, config, group_increment, Some(parent.clone()), None)
                     })
-                    .map(RefCell::new)
-                    .map(Rc::new)
                     .collect::<Vec<_>>();
 
                 let nodes = no_siblings_list
@@ -486,18 +491,13 @@ fn to_nested_expr(
                         let previous = if i == 0 {
                             parent.clone()
                         } else {
-                            Rc::downgrade(&no_siblings_list[i].clone())
+                            Rc::downgrade(&no_siblings_list[i - 1])
                         };
 
-                        ExprNode {
-                            current: e.borrow().current.clone(),
-                            previous: Some(previous),
-                            next: e.borrow().next.clone(),
-                            parent: e.borrow().parent.clone(),
-                        }
+                        e.borrow_mut().previous = Some(previous);
+
+                        e.clone()
                     })
-                    .map(RefCell::new)
-                    .map(Rc::new)
                     .collect::<Vec<_>>();
 
                 if nodes.is_empty() {
@@ -521,8 +521,6 @@ fn to_nested_expr(
                                 Some(x.clone()),
                                 Some(x.clone()),
                             )
-                            .map(RefCell::new)
-                            .map(Rc::new)
                         })
                         .collect::<Vec<_>>(),
                 ))
@@ -536,8 +534,8 @@ fn to_nested_expr(
             group_increment,
             config,
             e,
-            |tree: Option<ExprNode>| {
-                Expr::Group(Rc::new(RefCell::new(tree.unwrap())), group_increment.into())
+            |tree| {
+                Expr::Group(tree.unwrap(), group_increment.into())
             },
         ),
         RegexExpr::LookAround(e, la) => container(
@@ -546,7 +544,7 @@ fn to_nested_expr(
             group_increment,
             config,
             e,
-            |tree: Option<ExprNode>| Expr::LookAround(Rc::new(RefCell::new(tree.unwrap())), *la),
+            |tree| Expr::LookAround(tree.unwrap(), *la),
         ),
         RegexExpr::Repeat {
             child,
@@ -574,7 +572,7 @@ fn to_nested_expr(
                                     Some(node.clone()),
                                     Some(node.clone()),
                                 )
-                                .map(|x| Expr::Repeat(Rc::new(RefCell::new(x))))
+                                .map(|x| Expr::Repeat(x))
                             },
                             Some(node.clone()),
                             Some(node.clone()),
@@ -590,9 +588,17 @@ fn to_nested_expr(
                     };
 
                     if *lo == 0 {
-                        Some(Expr::Optional(Rc::new(RefCell::new(repeat_node?))))
+                        Some(Expr::Optional(repeat_node?))
+                    } else if range > config.four_max_quantifier {
+                        to_nested_expr(
+                            child.to_owned(),
+                            config,
+                            group_increment,
+                            Some(node.clone()),
+                            Some(node.clone()),
+                        )
+                        .map(|x| Expr::Repeat(x))
                     } else {
-                        // TODO: wrong!
                         panic!("Should have been covered by is_complex case");
                     }
                 },
@@ -601,7 +607,7 @@ fn to_nested_expr(
             )
         }
         // Delegates essentially forcibly match some string, so we can turn them into a token
-        RegexExpr::Delegate { inner, casei, .. } => Some(ExprNode::new_prev(
+        RegexExpr::Delegate { inner, casei, .. } => Some(Rc::new(RefCell::new(ExprNode::new_prev(
             Expr::Token(if *casei {
                 Token::new_case(inner, true)
             } else {
@@ -609,7 +615,7 @@ fn to_nested_expr(
             }),
             previous,
             parent,
-        )),
+        )))),
         // note that since we convert backrefs to tokens, the complexity of a vulnerability
         // may underestimate the actual complexity, though this will not cause
         // false negatives
@@ -620,7 +626,7 @@ fn to_nested_expr(
             group_increment,
             config,
             e,
-            |tree: Option<ExprNode>| Expr::AtomicGroup(Rc::new(RefCell::new(tree.unwrap()))),
+            |tree| Expr::AtomicGroup(tree.unwrap()),
         ),
         RegexExpr::KeepOut => unimplemented!("Keep out not supported."),
         RegexExpr::ContinueFromPreviousMatchEnd => {
@@ -659,13 +665,13 @@ fn to_nested_expr(
                             Some(x.clone()),
                             Some(x.clone()),
                         )
-                        .map(|x| ExprConditional::Condition(Rc::new(RefCell::new(x)))),
+                        .map(|x| ExprConditional::Condition(x)),
                     };
 
                     condition.map(|condition| Expr::Conditional {
                         condition,
-                        true_branch: Rc::new(RefCell::new(true_branch)),
-                        false_branch: Rc::new(RefCell::new(false_branch)),
+                        true_branch,
+                        false_branch,
                     })
                 } else {
                     None

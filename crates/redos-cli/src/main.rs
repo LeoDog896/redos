@@ -11,7 +11,7 @@ use languages::{
     language::{Language, Location},
 };
 use owo_colors::OwoColorize;
-use redos::{ir::to_expr, vulnerabilities};
+use redos::{ir::to_expr, vulnerabilities, VulnerabilityResult};
 use repo::parse_repository;
 use tempdir::TempDir;
 
@@ -41,6 +41,11 @@ enum Commands {
     /// Prints out the intermediate representation of a regex.
     Ir {
         /// The regex to parse
+        regex: String,
+    },
+    /// Checks for vulnerabilities in a regex.
+    Check {
+        /// The regex to check
         regex: String,
     },
 }
@@ -155,6 +160,18 @@ async fn main() -> Result<()> {
                     &Default::default()
                 )
             )
+        }
+        Commands::Check { regex } => {
+            let VulnerabilityResult { vulnerabilities, .. } = vulnerabilities(
+                regex.as_str(),
+                &Default::default(),
+            )?;
+
+            if vulnerabilities.is_empty() {
+                println!("No vulnerabilities found.");
+            } else {
+                println!("Vulnerabilities found: {:?}", vulnerabilities);
+            }
         }
     }
 
